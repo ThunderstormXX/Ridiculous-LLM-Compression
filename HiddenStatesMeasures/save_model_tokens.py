@@ -1,17 +1,20 @@
 import argparse
 import torch
+import json
+from pathlib import Path
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
 from memory_profiler import memory_usage
 import gc
+from datetime import datetime
 
 def load_model_and_tokenizer(model_path):
     """Load model with 4-bit quantization for memory efficiency"""
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         device_map="auto",
-        torch_dtype=torch.float32,
-        # load_in_4bit=True  # Quantization for memory reduction
+        torch_dtype=torch.float16,
+        load_in_4bit=True
     )
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     return model, tokenizer
@@ -30,49 +33,68 @@ def drop_layers(model, layers_to_drop):
     model.config.num_hidden_layers = len(kept_layers)
     return model
 
-def evaluate_memory(model, dataset_name, sample_size=10):
-    """Test memory usage with sample inputs"""
+def generate_and_save(model, tokenizer, dataset_name, output_file, sample_size=5):
+    """Generate text and save results to JSON"""
     dataset = load_dataset(dataset_name, split=f"train[:{sample_size}]")
-    mem_before = torch.cuda.memory_allocated()
+    results = []
     
-    def inference():
+    for i, text in enumerate(dataset["text"]):
+        inputs = tokenizer(text, return_tensors="pt").to(model.device)
+        
         with torch.no_grad():
-            for text in dataset["text"]:
-                inputs = tokenizer(text, return_tensors="pt").to(model.device)
-                _ = model.generate(**inputs, max_new_tokens=20)
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=20,
+                do_sample=True,
+                temperature=0.7
+            )
+        
+        decoded = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        results.append({
+            "input": text,
+            "output": decoded,
+            "timestamp": datetime.now().isoformat()
+        })
     
-    mem_usage = memory_usage(inference)
-    mem_after = torch.cuda.memory_allocated()
+    # Save to JSON with pretty formatting
+    with open(output_file, "w") as f:
+        json.dump(results, f, indent=2)
     
-    return {
-        "peak_memory": max(mem_usage),
-        "memory_saved": mem_before - mem_after
-    }
+    return len(results)
+
+def evaluate_memory(model, dataset_name):
+    """Measure memory usage during generation"""
+    def generation_wrapper():
+        generate_and_save(model, tokenizer, dataset_name, "/dev/null", sample_size=3)
+    
+    return max(memory_usage(generation_wrapper))
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="LLaMA Memory Optimizer with Text Generation")
     parser.add_argument("model_path", help="Path to LLaMA model")
     parser.add_argument("dataset_name", help="HuggingFace dataset name")
     parser.add_argument("layers_to_drop", help="Comma-separated layer indices or 'none'")
+    parser.add_argument("--output", default="generated_tokens.json", help="Output JSON file path")
     args = parser.parse_args()
 
-    # Load and modify model
-    print("Loading model...")
+    # Initialize
+    print("Loading model and tokenizer...")
     model, tokenizer = load_model_and_tokenizer(args.model_path)
-    original_size = sum(p.numel() for p in model.parameters())
-    
-    print(f"\nOriginal model layers: {len(model.model.layers)}")
     model = drop_layers(model, args.layers_to_drop)
-    print(f"Modified model layers: {len(model.model.layers)}")
-
-    # Evaluate memory
+    
+    # Generate and save
+    print(f"\nGenerating text samples (saving to {args.output})...")
+    num_samples = generate_and_save(model, tokenizer, args.dataset_name, args.output)
+    
+    # Evaluate
     print("\nEvaluating memory usage...")
-    metrics = evaluate_memory(model, args.dataset_name)
+    peak_mem = evaluate_memory(model, args.dataset_name)
     
     print("\nResults:")
-    print(f"- Peak memory during inference: {metrics['peak_memory']:.2f} MB")
-    print(f"- Estimated memory saved: {metrics['memory_saved'] / 1e6:.2f} MB")
-    print(f"- Layers removed: {len(model.model.layers) - len(model.model.layers)}")
+    print(f"- Generated {num_samples} samples")
+    print(f"- Peak memory usage: {peak_mem:.2f} MB")
+    print(f"- Output saved to: {Path(args.output).absolute()}")
 
     # Cleanup
     del model
