@@ -33,13 +33,13 @@ pip install -r requirements.txt
 
 ### Iterative Pruning
 ```bash
-./scripts/bash/run_iterative_pruning.sh /path/to/model ./workspace 5 0
+./scripts/bash/run_iterative_pruning.sh /path/to/model ./workspace 5 0 "0,1"
 ```
 
 ### Window Pruning
 ```bash
-./scripts/bash/run_window_pruning.sh /path/to/model ./workspace 3
-./scripts/bash/run_finetune_window_pruned.sh ./workspace/window_pruned_model ./workspace
+./scripts/bash/run_window_pruning.sh /path/to/model ./workspace 3 "0"
+./scripts/bash/run_finetune_window_pruned.sh ./workspace/window_pruned_model ./workspace 1000 "0,1"
 ```
 
 ### Python API

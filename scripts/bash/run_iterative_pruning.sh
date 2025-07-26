@@ -5,10 +5,21 @@ MODEL_PATH=$1
 WORKSPACE=${2:-"./workspace"}
 NUM_LAYERS=${3:-5}
 START_LAYER=${4:-0}
+DEVICES=${5:-"0"}
 
 if [ -z "$MODEL_PATH" ]; then
-    echo "Usage: $0 <model_path> [workspace] [num_layers] [start_layer]"
+    echo "Usage: $0 <model_path> [workspace] [num_layers] [start_layer] [devices]"
+    echo "  devices: comma-separated GPU IDs (e.g., '0,1,2') or 'cpu'"
     exit 1
+fi
+
+# Set CUDA devices
+if [ "$DEVICES" != "cpu" ]; then
+    export CUDA_VISIBLE_DEVICES=$DEVICES
+    echo "Using GPU devices: $DEVICES"
+else
+    export CUDA_VISIBLE_DEVICES=""
+    echo "Using CPU"
 fi
 
 echo "Starting iterative pruning for model: $MODEL_PATH"
@@ -38,7 +49,8 @@ for i in $(seq 0 $((NUM_LAYERS-1))); do
         --model_path $INPUT_MODEL \
         --layers $LAYER_IDX \
         --output_path $NEXT_MODEL \
-        --workspace $WORKSPACE
+        --workspace $WORKSPACE \
+        --device auto
     
     # Fine-tune with LoRA
     echo "Fine-tuning with LoRA..."
@@ -46,7 +58,8 @@ for i in $(seq 0 $((NUM_LAYERS-1))); do
         --model_path $NEXT_MODEL \
         --output_path $NEXT_MODEL \
         --workspace $WORKSPACE \
-        --max_steps 500
+        --max_steps 500 \
+        --device auto
     
     echo "Step $((i+1)) completed. Model saved to: $NEXT_MODEL"
 done

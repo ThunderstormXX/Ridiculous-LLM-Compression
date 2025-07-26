@@ -13,11 +13,12 @@ def main():
     parser.add_argument("--max_steps", type=int, default=500, help="Maximum training steps")
     parser.add_argument("--learning_rate", type=float, default=2e-4, help="Learning rate")
     parser.add_argument("--batch_size", type=int, default=2, help="Batch size")
+    parser.add_argument("--device", default="auto", help="Device to use (auto, cpu, cuda:0, etc.)")
     
     args = parser.parse_args()
     
     # Load model and tokenizer
-    model, tokenizer = load_model_and_tokenizer(args.model_path)
+    model, tokenizer = load_model_and_tokenizer(args.model_path, device=args.device)
     
     # Load dataset
     dataset_loader = DatasetLoader(tokenizer)

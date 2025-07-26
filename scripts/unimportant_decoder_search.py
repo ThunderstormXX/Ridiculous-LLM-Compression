@@ -10,11 +10,12 @@ def main():
     parser.add_argument("--window_size", type=int, default=3, help="Size of layer window to evaluate")
     parser.add_argument("--output_file", default="unimportant_layers.json", help="Output file for results")
     parser.add_argument("--workspace", default="./workspace", help="Workspace directory")
+    parser.add_argument("--device", default="auto", help="Device to use (auto, cpu, cuda:0, etc.)")
     
     args = parser.parse_args()
     
     # Load model and tokenizer
-    model, tokenizer = load_model_and_tokenizer(args.model_path)
+    model, tokenizer = load_model_and_tokenizer(args.model_path, device=args.device)
     
     # Create window pruner
     pruner = WindowPruner(model, tokenizer, args.workspace)

@@ -10,11 +10,12 @@ def main():
     parser.add_argument("--layers", required=True, help="Comma-separated layer indices to remove")
     parser.add_argument("--output_path", required=True, help="Path to save pruned model")
     parser.add_argument("--workspace", default="./workspace", help="Workspace directory")
+    parser.add_argument("--device", default="auto", help="Device to use (auto, cpu, cuda:0, etc.)")
     
     args = parser.parse_args()
     
     # Load model and tokenizer
-    model, tokenizer = load_model_and_tokenizer(args.model_path)
+    model, tokenizer = load_model_and_tokenizer(args.model_path, device=args.device)
     
     # Parse layer indices
     layer_indices = [int(x.strip()) for x in args.layers.split(",")]

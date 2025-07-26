@@ -1,0 +1,56 @@
+# Model checkpoints and weights
+checkpoints/
+*.bin
+*.safetensors
+*.pt
+*.pth
+model_step_*/
+window_pruned_model/
+window_pruned_finetuned/
+trained_*/
+
+# Datasets and caches
+cached_dataset/
+*.arrow
+*.cache
+dataset_cache/
+
+# Training outputs
+output/
+workspace/*/model*/
+workspace/*/checkpoint*/
+
+# Logs (keep visualization files)
+logs/
+*.log
+events.out.tfevents.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Keep visualization files
+!*.png
+!*.jpg
+!*.jpeg
+!*.svg
+!*.pdf
+!*.html
+!*.json
+!perplexity_plot.*
+!*.ipynb
