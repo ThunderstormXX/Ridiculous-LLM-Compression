@@ -1,42 +1,72 @@
-# Ridiculous LLM Compression
-“Ridiculous LLM Compression Techniques” project by Ignashin Igor, Kiselyov Ivan, Leontyeva Polina, Murzina Anastasiya, and mentor Bulatov Aydar (AIRI Summer School 2025).
+# PruningHealing Library
 
-This repository accompanies the report “Ridiculous LLM Compression Techniques” and explores practical ways to shrink LLaMA models while keeping performance high. The goal is to reduce GPU memory usage so that large language models can be deployed on modest hardware.
+A modular library for pruning and healing large language models with LoRA fine-tuning.
 
-## Key Experiments
-Attention Head Similarity – measuring cosine similarity between attention heads to identify redundant heads that can be pruned.
+## Installation
 
-Double‑Layer Removal – systematically removing pairs of layers to reveal which layers are essential and which are not.
-
-Layer Interchangeability – replacing the weights of one layer with those of another to test functional overlap.
-
-Centered Kernel Alignment (CKA) – comparing layer activations to discover layers with similar representations.
-
-Layer Interpolation – creating blended layers by averaging parameters of two layers and observing the effect on perplexity.
-
-Iterative LoRA Healing – gradually pruning layers while adding LoRA adapters to the remaining layers to recover quality.
-
-Full details and results are provided in Report.pdf.
-
-## Repository Layout
-HiddenStatesMeasures/ – scripts and notebooks for analyzing hidden state dynamics, such as diff_graphics.py and inference_tiny_llama_reduce.ipynb.
-
-PruningHealing/ – LoRA‑based pruning workflow, containing main.py, various notebooks, and experiment logs.
-
-hvostchedUser/ – utilities for layer replacement analysis and perplexity evaluation.
-
-finding_similar_heads.ipynb – notebook for the attention head similarity study.
-
-## Running the Experiments
-Environment Setup
+```bash
+pip install -r requirements.txt
 ```
-conda create -n llama-compress python=3.10
-pip install -r PruningHealing/requirements.txt
-```
-Iterative Pruning with LoRA
-```
-python PruningHealing/main.py
-```
-This script loads the specified LLaMA model and performs the iterative pruning + LoRA healing procedure described in the report.
 
-Other scripts and notebooks follow assumptions: a working Python 3.10 environment and the dependencies listed in PruningHealing/requirements.txt.
+## Library Structure
+
+- `src/pruninghealing/`: Main library modules
+  - `trainer.py`: Training and fine-tuning functionality
+  - `dataset.py`: Dataset loading and preparation
+  - `prune.py`: Pruning implementations (Iterative and Window)
+  - `logger.py`: Experiment logging and visualization
+  - `utils.py`: Helper functions
+
+## Scripts
+
+- `scripts/prune_layers.py`: Prune specified decoder layers
+- `scripts/finetuning.py`: Fine-tune models on datasets
+- `scripts/unimportant_decoder_search.py`: Find least important layers
+
+## Bash Scripts
+
+- `scripts/bash/run_iterative_pruning.sh`: Run iterative pruning approach
+- `scripts/bash/run_window_pruning.sh`: Run window pruning approach
+- `scripts/bash/run_finetune_window_pruned.sh`: Fine-tune window-pruned models
+
+## Usage Examples
+
+### Iterative Pruning
+```bash
+./scripts/bash/run_iterative_pruning.sh /path/to/model ./workspace 5 0
+```
+
+### Window Pruning
+```bash
+./scripts/bash/run_window_pruning.sh /path/to/model ./workspace 3
+./scripts/bash/run_finetune_window_pruned.sh ./workspace/window_pruned_model ./workspace
+```
+
+### Python API
+```python
+from src.pruninghealing import Trainer, DatasetLoader, IterativePruner
+from src.pruninghealing.utils import load_model_and_tokenizer
+
+# Load model
+model, tokenizer = load_model_and_tokenizer("path/to/model")
+
+# Load dataset
+dataset = DatasetLoader(tokenizer).load_wikitext()
+
+# Create trainer
+trainer = Trainer(model, tokenizer)
+
+# Train model
+trained_model = trainer.train(dataset)
+```
+
+## Results Analysis
+
+Use the Jupyter notebook `src/notebooks/results.ipynb` to visualize and compare results from both pruning approaches.
+
+## Supported Architectures
+
+- LLaMA-2
+- Mistral
+- Phi-2
+- Qwen
