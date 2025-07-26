@@ -13,6 +13,7 @@ if [ -z "$PRUNED_MODEL_PATH" ]; then
 fi
 
 # Set CUDA devices
+export CUDA_DEVICE_ORDER='PCI_BUS_ID'
 if [ "$DEVICES" != "cpu" ]; then
     export CUDA_VISIBLE_DEVICES=$DEVICES
     echo "Using GPU devices: $DEVICES"
