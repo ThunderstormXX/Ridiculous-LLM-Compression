@@ -101,9 +101,11 @@ class IterativePruner:
     
     def _get_base_model(self, model):
         """Get base model from PEFT wrapper if needed"""
-        if hasattr(model, "base_model"):
-            return model.base_model.model.model
-        return model.model
+        from .utils import get_layers_base
+        base = get_layers_base(model)
+        if base is None:
+            raise RuntimeError(f"Cannot find layers in {model.__class__.__name__}")
+        return base
 
 class WindowPruner:
     def __init__(self, model, tokenizer, workspace_dir="./workspace"):
@@ -190,6 +192,8 @@ class WindowPruner:
     
     def _get_base_model(self, model):
         """Get base model from PEFT wrapper if needed"""
-        if hasattr(model, "base_model"):
-            return model.base_model.model.model
-        return model.model
+        from .utils import get_layers_base
+        base = get_layers_base(model)
+        if base is None:
+            raise RuntimeError(f"Cannot find layers in {model.__class__.__name__}")
+        return base

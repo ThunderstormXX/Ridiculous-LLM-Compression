@@ -2,16 +2,30 @@
 import torch
 from datasets import load_dataset
 
+def get_layers_base(model):
+    """Universally extract base part of LLM model containing .layers attribute"""
+    candidates = ['model', 'transformer', 'decoder', 'base_model']
+    
+    obj = model
+    for _ in range(3):  # max 3 levels of nesting
+        for cand in candidates:
+            if hasattr(obj, cand):
+                obj = getattr(obj, cand)
+                if hasattr(obj, 'layers'):
+                    return obj
+        # Try unwrap (e.g., PeftModel -> base_model)
+        if hasattr(obj, 'base_model'):
+            obj = obj.base_model
+        else:
+            break
+    return None
+
 def get_model_layers(model):
     """Get number of layers in model"""
-    try:
-        if hasattr(model, "base_model"):
-            base = model.base_model.model.model
-        else:
-            base = model.model
-        return len(base.layers)
-    except AttributeError:
-        raise RuntimeError(f"Cannot determine layer count for {model.__class__.__name__}")
+    base = get_layers_base(model)
+    if base is None:
+        raise RuntimeError(f"Cannot find layers in {model.__class__.__name__}")
+    return len(base.layers)
 
 def calculate_perplexity(model, tokenizer, dataset_name="wikitext", dataset_config="wikitext-2-raw-v1", max_samples=100):
     """Calculate perplexity on evaluation dataset"""

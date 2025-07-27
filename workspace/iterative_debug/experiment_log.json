@@ -1,0 +1,51 @@
+[
+  {
+    "step": 0,
+    "action": "baseline",
+    "layers_remaining": 32,
+    "perplexity": 10.907449722290039,
+    "timestamp": "2025-07-27T14:53:21.901934"
+  },
+  {
+    "action": "prune",
+    "step": 1,
+    "layer": 17,
+    "ppl": 12.589109420776367,
+    "timestamp": "2025-07-27T14:54:23.993452"
+  },
+  {
+    "action": "train",
+    "step": 1,
+    "layer": 17,
+    "ppl": 11.442778587341309,
+    "timestamp": "2025-07-27T14:54:23.995507"
+  },
+  {
+    "action": "prune",
+    "step": 2,
+    "layer": 18,
+    "ppl": 12.878010749816895,
+    "timestamp": "2025-07-27T14:55:14.783037"
+  },
+  {
+    "action": "train",
+    "step": 2,
+    "layer": 18,
+    "ppl": 11.480204582214355,
+    "timestamp": "2025-07-27T14:55:14.784103"
+  },
+  {
+    "action": "prune",
+    "step": 3,
+    "layer": 19,
+    "ppl": 13.532174110412598,
+    "timestamp": "2025-07-27T14:55:47.551188"
+  },
+  {
+    "action": "train",
+    "step": 3,
+    "layer": 19,
+    "ppl": 12.162144660949707,
+    "timestamp": "2025-07-27T14:55:47.552521"
+  }
+]
