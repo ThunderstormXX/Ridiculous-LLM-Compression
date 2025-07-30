@@ -11,6 +11,7 @@ trained_*/
 
 # Datasets and caches
 cached_dataset/
+cached_dataset_c4/
 *.arrow
 *.cache
 dataset_cache/

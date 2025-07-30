@@ -131,7 +131,7 @@ class WindowPruner:
         return best_window, best_score
     
     def prune_window(self, window_layers):
-        """Remove window of layers and apply LoRA to last MLP layers"""
+        """Remove window of layers and apply LoRA to remaining layers"""
         # Remove layers
         base_model = self._get_base_model(self.model)
         with torch.no_grad():
@@ -140,19 +140,8 @@ class WindowPruner:
             base_model.layers = nn.ModuleList(layers)
             base_model.config.num_hidden_layers = len(layers)
         
-        # Apply QLoRA to last few MLP layers
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4"
-        )
-        
-        # Get target modules for last layers
-        last_layers = min(3, len(base_model.layers))
-        target_modules = []
-        for i in range(len(base_model.layers) - last_layers, len(base_model.layers)):
-            target_modules.extend(self._get_mlp_modules(i))
+        # Apply LoRA to all remaining layers (use generic target modules)
+        target_modules = ["gate_proj", "down_proj", "up_proj"]
         
         lora_config = LoraConfig(
             r=64,

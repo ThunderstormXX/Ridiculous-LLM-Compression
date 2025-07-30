@@ -1,0 +1,11 @@
+{
+  "baseline_perplexity": 20.30803871154785,
+  "best_window": [
+    0,
+    1,
+    2
+  ],
+  "best_score": 3,
+  "window_size": 3,
+  "model_path": "src/checkpoints/tinyllama"
+}

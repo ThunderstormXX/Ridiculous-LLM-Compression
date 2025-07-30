@@ -12,7 +12,7 @@ class Trainer:
         self.workspace_dir = workspace_dir
         os.makedirs(workspace_dir, exist_ok=True)
         
-    def train(self, dataset, max_steps=500, learning_rate=2e-4, batch_size=2):
+    def train(self, dataset, max_steps=500, learning_rate=2e-4, batch_size=1):
         """Train/fine-tune model on dataset"""
         output_dir = os.path.join(self.workspace_dir, "training_output")
         
@@ -26,10 +26,15 @@ class Trainer:
             bf16=True,
             logging_steps=50,
             save_steps=max_steps,
-            gradient_accumulation_steps=2,
+            gradient_accumulation_steps=8,
             warmup_steps=100,
             logging_dir=os.path.join(self.workspace_dir, "logs"),
-            report_to="tensorboard"
+            report_to="tensorboard",
+            dataloader_pin_memory=False,
+            gradient_checkpointing=False,
+            optim="adamw_torch_fused",
+            remove_unused_columns=False,
+            dataloader_num_workers=0
         )
         
         trainer = IterationLimitedTrainer(

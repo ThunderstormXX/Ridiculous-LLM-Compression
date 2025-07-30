@@ -40,6 +40,55 @@ class DatasetLoader:
         self.eval_dataset = tokenized_datasets["validation"]
         return self
         
+    def load_c4(self, max_length=256, train_size=1000, eval_size=100):
+        """Load and tokenize C4 dataset"""
+        cache_dir = self.cache_dir + "_c4"
+        if os.path.exists(cache_dir):
+            tokenized_datasets = load_from_disk(cache_dir)
+        else:
+            dataset = load_dataset('allenai/c4', 'en', streaming=True)
+            
+            # Take samples from streaming dataset
+            train_samples = []
+            eval_samples = []
+            
+            for i, sample in enumerate(dataset['train']):
+                if len(train_samples) < train_size:
+                    train_samples.append(sample)
+                else:
+                    break
+                    
+            for i, sample in enumerate(dataset['validation']):
+                if len(eval_samples) < eval_size:
+                    eval_samples.append(sample)
+                else:
+                    break
+            
+            from datasets import Dataset
+            train_ds = Dataset.from_list(train_samples)
+            eval_ds = Dataset.from_list(eval_samples)
+            
+            def tokenize_function(examples):
+                return self.tokenizer(examples["text"], padding="max_length", 
+                                    truncation=True, max_length=max_length)
+            
+            train_ds = train_ds.map(tokenize_function, batched=True, remove_columns=["text", "timestamp", "url"])
+            eval_ds = eval_ds.map(tokenize_function, batched=True, remove_columns=["text", "timestamp", "url"])
+            
+            def format_dataset(examples):
+                examples["labels"] = examples["input_ids"].copy()
+                return examples
+            
+            train_ds = train_ds.map(format_dataset, batched=True)
+            eval_ds = eval_ds.map(format_dataset, batched=True)
+            
+            tokenized_datasets = DatasetDict({"train": train_ds, "validation": eval_ds})
+            tokenized_datasets.save_to_disk(cache_dir)
+        
+        self.train_dataset = tokenized_datasets["train"]
+        self.eval_dataset = tokenized_datasets["validation"]
+        return self
+        
     def load_custom(self, dataset_path):
         """Load custom dataset from path"""
         if os.path.isdir(dataset_path):

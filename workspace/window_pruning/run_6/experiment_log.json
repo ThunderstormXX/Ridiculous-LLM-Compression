@@ -1,0 +1,22 @@
+[
+  {
+    "step": 0,
+    "action": "baseline",
+    "layers_remaining": 16,
+    "perplexity": 18.877843856811523,
+    "model_path": "src/checkpoints/tinyllama",
+    "timestamp": "2025-07-30T17:46:44.376117"
+  },
+  {
+    "step": 1,
+    "action": "prune",
+    "layers_removed": [
+      0,
+      1,
+      2
+    ],
+    "layers_remaining": 13,
+    "perplexity": 87410.4609375,
+    "timestamp": "2025-07-30T17:46:48.164990"
+  }
+]
