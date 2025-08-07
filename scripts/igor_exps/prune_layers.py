@@ -1,6 +1,9 @@
-# scripts/prune_layers.py
+# scripts/igor_exps/prune_layers.py
 import argparse
 import torch
+import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 from src.pruninghealing.utils import load_model_and_tokenizer, get_model_layers
 from src.pruninghealing.prune import IterativePruner
 
@@ -42,7 +45,8 @@ def main():
     print(f"Remaining layers: {get_model_layers(model)}")
     
     # Save pruned model
-    model.save_pretrained(args.output_path)
+    from src.pruninghealing.utils import safe_save_model
+    safe_save_model(model, args.output_path)
     tokenizer.save_pretrained(args.output_path)
     
     print(f"Pruned model saved to: {args.output_path}")

@@ -1,0 +1,7 @@
+{
+  "baseline_perplexity": 11.104533195495605,
+  "best_window": null,
+  "best_score": Infinity,
+  "window_size": 1000,
+  "model_path": "src/checkpoints/llama3.1-8b"
+}

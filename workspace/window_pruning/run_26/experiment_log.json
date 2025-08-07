@@ -1,0 +1,30 @@
+[
+  {
+    "step": 0,
+    "action": "baseline",
+    "layers_remaining": 32,
+    "perplexity": 528.2581787109375,
+    "model_path": "src/checkpoints/llama3.1-8b",
+    "timestamp": "2025-08-07T14:22:05.332798"
+  },
+  {
+    "step": 1,
+    "action": "prune",
+    "layers_removed": [
+      0,
+      1,
+      2
+    ],
+    "layers_remaining": 29,
+    "perplexity": 66974.625,
+    "timestamp": "2025-08-07T14:22:08.770425"
+  },
+  {
+    "step": 2,
+    "action": "train",
+    "perplexity": 58955.4375,
+    "training_steps": 10,
+    "total_steps_used": 10,
+    "timestamp": "2025-08-07T14:22:32.197966"
+  }
+]

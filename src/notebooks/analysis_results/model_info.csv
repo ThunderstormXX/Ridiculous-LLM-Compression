@@ -1,0 +1,6 @@
+path,error,layers,model_type,parameters,trainable_params,is_peft
+../../src/checkpoints/llama3.1-8b_p_iter,"None is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `hf auth login` or by passing `token=<your_token>`",,,,,
+../../src/checkpoints/llama3.1-8b_p_window_finetuned,"Can't load the configuration of 'src/checkpoints/llama3.1-8b'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, make sure 'src/checkpoints/llama3.1-8b' is the correct path to a directory containing a config.json file",,,,,
+../../src/checkpoints/llama3.1-8b_p_window,"Can't load the configuration of 'src/checkpoints/llama3.1-8b'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, make sure 'src/checkpoints/llama3.1-8b' is the correct path to a directory containing a config.json file",,,,,
+../../src/checkpoints/llama3.1-8b,,32.0,llama,8030261248.0,8030261248.0,False

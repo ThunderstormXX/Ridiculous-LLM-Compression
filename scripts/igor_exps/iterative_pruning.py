@@ -1,7 +1,9 @@
-# scripts/iterative_pruning.py
+# scripts/igor_exps/iterative_pruning.py
 import argparse
+import os
 import sys
-sys.path.append('..')
+import torch
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 
 from src.pruninghealing import Trainer, DatasetLoader, IterativePruner
 from src.pruninghealing.utils import load_model_and_tokenizer, calculate_perplexity, get_model_layers
@@ -34,8 +36,15 @@ def main():
     
     args = parser.parse_args()
     
-    import os
-    os.makedirs(args.workspace, exist_ok=True)
+    # Create experiment directory
+    exp_dir = os.path.join(args.workspace, "iterative_pruning")
+    os.makedirs(exp_dir, exist_ok=True)
+    run_num = 1
+    while os.path.exists(os.path.join(exp_dir, f"run_{run_num}")):
+        run_num += 1
+    run_dir = os.path.join(exp_dir, f"run_{run_num}")
+    os.makedirs(run_dir, exist_ok=True)
+    args.workspace = run_dir
     
     # Load model and tokenizer
     print("Loading model...")
@@ -49,7 +58,7 @@ def main():
     
     # Calculate baseline
     print("Calculating baseline perplexity...")
-    baseline_ppl = calculate_perplexity(model, tokenizer, max_samples=20)
+    baseline_ppl = calculate_perplexity(model, tokenizer, dataset=dataset_loader.eval_dataset, max_samples=20)
     print(f"Baseline perplexity: {baseline_ppl:.3f}")
     
     # Initialize components
@@ -73,58 +82,60 @@ def main():
     current_model = model
     
     for step in range(args.num_layers):
-        layer_idx = args.start_layer + step
-        print(f"\n=== Step {step+1}: Processing layer {layer_idx} ===")
+        # Calculate actual layer to remove (accounting for previous removals)
+        layer_to_remove = args.start_layer
+        layer_for_lora = args.start_layer - 1 if args.start_layer > 0 else 0
+        
+        print(f"\n=== Step {step+1}: Removing layer {layer_to_remove}, LoRA on layer {layer_for_lora} ===")
         
         # Remove layer
-        current_model = pruner._remove_layer(current_model, layer_idx)
+        current_model = pruner._remove_layer(current_model, layer_to_remove)
         layers_remaining = get_model_layers(current_model)
         print(f"Layers remaining: {layers_remaining}")
         
         # Test after pruning
-        ppl_after_prune = calculate_perplexity(current_model, tokenizer, max_samples=20)
+        ppl_after_prune = calculate_perplexity(current_model, tokenizer, dataset=dataset_loader.eval_dataset, max_samples=20)
         print(f"Perplexity after pruning: {ppl_after_prune:.3f}")
         
-        # Apply LoRA
-        print(f"Applying LoRA to layer {layer_idx}...")
-        current_model = pruner._apply_lora(current_model, layer_idx)
+        # Apply LoRA to previous layer
+        print(f"Applying LoRA to layer {layer_for_lora}...")
+        current_model = pruner._apply_lora_selective(current_model, layer_for_lora)
         
-        # Enable gradients for LoRA parameters
-        for param in current_model.parameters():
-            if param.requires_grad:
-                param.requires_grad_(True)
-        
-        # Train model with budget
+        # Train only the latest LoRA parameters
         remaining_budget = args.max_steps - total_steps_used
         current_steps = min(steps_per_iter, remaining_budget)
-        print(f"Training model ({current_steps} steps, {total_steps_used}/{args.max_steps} used)...")
+        print(f"Training LoRA on layer {layer_for_lora} ({current_steps} steps, {total_steps_used}/{args.max_steps} used)...")
         
-        # Clear cache before training
+        # Freeze all parameters except the latest LoRA
+        for name, param in current_model.named_parameters():
+            if f"layers.{layer_for_lora}." in name and "lora" in name:
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
+        
         torch.cuda.empty_cache()
-        
         trainer.model = current_model
         current_model = trainer.train(dataset_loader, max_steps=current_steps)
         total_steps_used += current_steps
-        
-        # Clear cache after training
         torch.cuda.empty_cache()
         
         # Test after training
-        ppl_after_train = calculate_perplexity(current_model, tokenizer, max_samples=20)
+        ppl_after_train = calculate_perplexity(current_model, tokenizer, dataset=dataset_loader.eval_dataset, max_samples=5)
         print(f"Perplexity after training: {ppl_after_train:.3f}")
         
         # Log step with training info
         logger.log_step({
             "action": "prune", 
             "step": step + 1, 
-            "layer": layer_idx, 
+            "removed_layer": layer_to_remove,
+            "lora_layer": layer_for_lora,
             "ppl": ppl_after_prune,
             "layers_remaining": layers_remaining
         })
         logger.log_step({
             "action": "train", 
             "step": step + 1, 
-            "layer": layer_idx, 
+            "lora_layer": layer_for_lora,
             "ppl": ppl_after_train,
             "training_steps": current_steps,
             "total_steps_used": total_steps_used,
@@ -138,7 +149,6 @@ def main():
             break
     
     # Save final pruned model
-    import os
     model_name = os.path.basename(args.model_path.rstrip('/'))
     output_path = f"src/checkpoints/{model_name}_p_iter"
     os.makedirs("src/checkpoints", exist_ok=True)
@@ -151,5 +161,4 @@ def main():
     print(f"Final model saved to: {output_path}")
 
 if __name__ == "__main__":
-    import torch
     main()

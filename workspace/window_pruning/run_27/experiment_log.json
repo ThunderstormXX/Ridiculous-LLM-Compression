@@ -1,0 +1,30 @@
+[
+  {
+    "step": 0,
+    "action": "baseline",
+    "method": "window",
+    "layers_total": 32,
+    "perplexity": 528.2581787109375,
+    "timestamp": "2025-08-07T15:14:49.692334"
+  },
+  {
+    "step": 1,
+    "action": "prune",
+    "layers_removed": [
+      0,
+      1,
+      2
+    ],
+    "layers_remaining": 29,
+    "perplexity": 66974.625,
+    "timestamp": "2025-08-07T15:14:52.509018"
+  },
+  {
+    "step": 2,
+    "action": "train",
+    "perplexity": 59246.77734375,
+    "training_steps": 10,
+    "total_steps_used": 10,
+    "timestamp": "2025-08-07T15:15:12.856923"
+  }
+]

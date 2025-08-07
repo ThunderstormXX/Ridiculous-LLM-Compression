@@ -1,0 +1,5 @@
+experiment,step,action,perplexity,layers_remaining,layers_removed
+iterative,0,baseline,528.2581787109375,32.0,
+window,0,baseline,528.2581787109375,32.0,
+window,1,prune,66974.625,29.0,"[0, 1, 2]"
+window,2,train,59246.77734375,,

@@ -1,0 +1,22 @@
+[
+  {
+    "step": 0,
+    "action": "baseline",
+    "method": "window",
+    "layers_total": 32,
+    "perplexity": 528.2556762695312,
+    "timestamp": "2025-08-07T16:42:11.059400"
+  },
+  {
+    "step": 1,
+    "action": "prune",
+    "layers_removed": [
+      19,
+      20,
+      21
+    ],
+    "layers_remaining": 29,
+    "perplexity": 645.0848388671875,
+    "timestamp": "2025-08-07T16:42:49.395948"
+  }
+]
