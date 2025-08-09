@@ -18,6 +18,7 @@ dependencies = [
     "tensorboard",
     "jupyter",
     "scikit-learn",
+    "seaborn>=0.13.2",
 ]
 
 [build-system]
