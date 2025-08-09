@@ -6,5 +6,62 @@
     "layers_total": 32,
     "perplexity": 0.20791671244967447,
     "timestamp": "2025-08-09T17:46:58.797856"
+  },
+  {
+    "action": "prune",
+    "step": 1,
+    "removed_layer": 19,
+    "lora_layer": 18,
+    "perplexity": 0.21783510004157017,
+    "layers_remaining": 31,
+    "timestamp": "2025-08-09T19:25:48.342305"
+  },
+  {
+    "action": "train",
+    "step": 1,
+    "lora_layer": 18,
+    "perplexity": 0.21185784575388164,
+    "training_steps": 1666,
+    "total_steps_used": 1666,
+    "budget_remaining": 3334,
+    "timestamp": "2025-08-09T19:25:48.342830"
+  },
+  {
+    "action": "prune",
+    "step": 2,
+    "removed_layer": 19,
+    "lora_layer": 18,
+    "perplexity": 0.22142927558101697,
+    "layers_remaining": 30,
+    "timestamp": "2025-08-09T21:07:48.722421"
+  },
+  {
+    "action": "train",
+    "step": 2,
+    "lora_layer": 18,
+    "perplexity": 0.21878002359358556,
+    "training_steps": 1666,
+    "total_steps_used": 3332,
+    "budget_remaining": 1668,
+    "timestamp": "2025-08-09T21:07:48.722971"
+  },
+  {
+    "action": "prune",
+    "step": 3,
+    "removed_layer": 19,
+    "lora_layer": 18,
+    "perplexity": 0.22825087789332782,
+    "layers_remaining": 29,
+    "timestamp": "2025-08-09T22:22:28.440878"
+  },
+  {
+    "action": "train",
+    "step": 3,
+    "lora_layer": 18,
+    "perplexity": 0.22596635689279693,
+    "training_steps": 1666,
+    "total_steps_used": 4998,
+    "budget_remaining": 2,
+    "timestamp": "2025-08-09T22:22:28.441343"
   }
 ]
