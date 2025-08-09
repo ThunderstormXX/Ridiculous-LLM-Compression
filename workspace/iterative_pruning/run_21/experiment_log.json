@@ -1,0 +1,10 @@
+[
+  {
+    "step": 0,
+    "action": "baseline",
+    "method": "iterative",
+    "layers_total": 32,
+    "perplexity": 0.4208925733104945,
+    "timestamp": "2025-08-09T16:51:50.989387"
+  }
+]

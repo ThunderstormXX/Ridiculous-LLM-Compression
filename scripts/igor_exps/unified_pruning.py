@@ -34,22 +34,38 @@ def main():
     run_dir = os.path.join(exp_dir, f"run_{run_num}")
     os.makedirs(run_dir, exist_ok=True)
     
-    # Load model and tokenizer
     print("Loading model...")
-    # Use cuda:0 instead of auto to avoid device_map issues with PEFT
-    device = "cuda:0" if args.device == "auto" else args.device
+    device = args.device
     model, tokenizer = load_model_and_tokenizer(args.model_path, device=device)
     print(f"Model loaded: {get_model_layers(model)} layers")
     
-    # Load dataset
-    print("Loading C4 dataset...")
-    dataset_loader = DatasetLoader(tokenizer)
-    dataset_loader.load_c4(train_size=500, eval_size=50)
+    print("Loading cached dataset...")
+    from datasets import load_from_disk
+    cached_dataset_path = os.path.join(os.path.dirname(__file__), '../../cached_dataset')
+    raw_dataset = load_from_disk(cached_dataset_path)
     
-    # Calculate baseline perplexity
     print("Calculating baseline perplexity...")
-    baseline_ppl = calculate_perplexity(model, tokenizer, dataset=dataset_loader.eval_dataset, max_samples=20)
+    baseline_ppl = calculate_perplexity(model, tokenizer, dataset=raw_dataset['validation'])
     print(f"Baseline perplexity: {baseline_ppl:.3f}")
+    
+    # Tokenize dataset for training
+    print("Tokenizing dataset for training...")
+    def tokenize_function(examples):
+        return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=512)
+    
+    tokenized_dataset = raw_dataset.map(tokenize_function, batched=True, remove_columns=raw_dataset['train'].column_names)
+    
+    def format_dataset(examples):
+        examples["labels"] = examples["input_ids"].copy()
+        return examples
+    
+    tokenized_dataset = tokenized_dataset.map(format_dataset, batched=True)
+    
+    # Create simple dataset object for training
+    class SimpleDataset:
+        def __init__(self, train_data, eval_data):
+            self.train_dataset = train_data
+            self.eval_dataset = eval_data
     
     # Initialize components
     trainer = Trainer(model, tokenizer, run_dir)
@@ -68,8 +84,9 @@ def main():
     if args.method == "iterative":
         pruner = IterativePruner(model, tokenizer, run_dir)
         search_strategy = DefaultIterativeStrategy()
+        dataset_obj = SimpleDataset(tokenized_dataset['train'], raw_dataset['validation'])
         final_model = pruner.prune_and_heal(
-            dataset=dataset_loader,
+            dataset=dataset_obj,
             trainer=trainer,
             logger=logger,
             start_layer=args.start_layer,
@@ -81,8 +98,9 @@ def main():
     else:  # window
         pruner = WindowPruner(model, tokenizer, run_dir)
         search_strategy = DefaultWindowStrategy()
+        dataset_obj = SimpleDataset(tokenized_dataset['train'], raw_dataset['validation'])
         final_model = pruner.prune_and_heal(
-            dataset=dataset_loader,
+            dataset=dataset_obj,
             trainer=trainer,
             logger=logger,
             window_size=args.window_size,

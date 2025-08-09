@@ -89,12 +89,30 @@ class DatasetLoader:
         self.eval_dataset = tokenized_datasets["validation"]
         return self
         
-    def load_custom(self, dataset_path):
+    def load_custom(self, dataset_path, max_length=512):
         """Load custom dataset from path"""
         if os.path.isdir(dataset_path):
             datasets = load_from_disk(dataset_path)
         else:
             datasets = load_dataset(dataset_path)
+        
+        # Check if dataset needs tokenization
+        sample = datasets["train"][0]
+        if "input_ids" not in sample and "text" in sample:
+            # Dataset needs tokenization
+            def tokenize_function(examples):
+                return self.tokenizer(examples["text"], padding="max_length", 
+                                    truncation=True, max_length=max_length)
+            
+            # Remove all columns and tokenize
+            columns_to_remove = datasets["train"].column_names
+            datasets = datasets.map(tokenize_function, batched=True, remove_columns=columns_to_remove)
+            
+            def format_dataset(examples):
+                examples["labels"] = examples["input_ids"].copy()
+                return examples
+            
+            datasets = datasets.map(format_dataset, batched=True)
             
         self.train_dataset = datasets["train"]
         self.eval_dataset = datasets.get("validation", datasets.get("test"))

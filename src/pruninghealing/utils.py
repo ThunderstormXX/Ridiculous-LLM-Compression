@@ -1,6 +1,10 @@
 # pruninghealing/utils.py
 import torch
 from datasets import load_dataset
+import math
+import torch
+from tqdm import tqdm
+from datasets import load_dataset, Dataset
 
 def get_layers_base(model):
     """Universally extract base part of LLM model containing .layers attribute"""
@@ -27,75 +31,101 @@ def get_model_layers(model):
         raise RuntimeError(f"Cannot find layers in {model.__class__.__name__}")
     return len(base.layers)
 
-def calculate_perplexity(model, tokenizer, dataset=None, dataset_name="allenai/c4", dataset_config="en", max_samples=100):
-    """Calculate perplexity on evaluation dataset"""
-    print(f"Starting perplexity calculation with {max_samples} samples...")
+def calculate_perplexity(
+    model,
+    tokenizer,
+    dataset,
+    max_samples=None,
+    max_length=512,
+    normalized=True,
+    device=None,
+):
+    """
+    Calculate perplexity or normalized loss (divided by log vocab size).
+    If normalized=True, returns normalized loss H_norm = H / log V (<=1 for better-than-random).
+    Else returns perplexity PPL = exp(H).
+
+    Returns single float.
+    """
+    import torch
+    import math
+    from tqdm import tqdm
+
+    if device is None:
+        device = next(model.parameters()).device
+
     model.eval()
-    device = next(model.parameters()).device
-    print(f"Model device: {device}")
-    
-    # Use provided dataset or load from HuggingFace
-    if dataset is None:
-        if dataset_name == "allenai/c4":
-            eval_dataset = load_dataset(dataset_name, dataset_config, split="validation", streaming=True)
-            eval_samples = []
-            for i, sample in enumerate(eval_dataset):
-                if len(eval_samples) >= max_samples:
-                    break
-                eval_samples.append(sample)
-            from datasets import Dataset
-            eval_dataset = Dataset.from_list(eval_samples)
-        else:
-            eval_dataset = load_dataset(dataset_name, dataset_config, split="validation")
-            eval_dataset = eval_dataset.select(range(min(max_samples, len(eval_dataset))))
-    else:
-        eval_dataset = dataset.select(range(min(max_samples, len(dataset))))
-    
-    total_loss = 0
+    if max_samples is not None:
+        dataset = dataset.select(range(min(max_samples, len(dataset))))
+
+    total_neg_log_likelihood = 0.0
     total_tokens = 0
-    
-    print(f"Processing {len(eval_dataset)} samples...")
+
+    vocab_size = getattr(tokenizer, "vocab_size", None)
+    if vocab_size is None:
+        try:
+            vocab_size = len(tokenizer.get_vocab())
+        except Exception:
+            vocab_size = None
+
+    pbar = tqdm(dataset, desc="Perplexity", unit="sample")
+
     with torch.no_grad():
-        for i, example in enumerate(eval_dataset):
-            if i % 5 == 0:
-                print(f"Processing sample {i+1}/{len(eval_dataset)}...")
-            
-            # Handle different dataset formats
-            text = None
+        for example in pbar:
             if "text" in example:
                 text = example["text"]
+                if not text or not text.strip():
+                    continue
+                inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=max_length)
+                inputs = {k: v.to(device) for k, v in inputs.items()}
+                inputs["labels"] = inputs["input_ids"].clone()
             elif "input_ids" in example:
-                # Already tokenized dataset
-                inputs = {"input_ids": torch.tensor(example["input_ids"]).unsqueeze(0).to(device)}
+                ids = example["input_ids"]
+                ids = torch.tensor(ids, dtype=torch.long).unsqueeze(0).to(device)
+                inputs = {"input_ids": ids}
                 if "attention_mask" in example:
-                    inputs["attention_mask"] = torch.tensor(example["attention_mask"]).unsqueeze(0).to(device)
+                    am = torch.tensor(example["attention_mask"], dtype=torch.long).unsqueeze(0).to(device)
+                    inputs["attention_mask"] = am
                 inputs["labels"] = inputs["input_ids"].clone()
             else:
                 continue
-                
-            if text is not None:
-                if not text.strip():
-                    continue
-                inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=256)
-                inputs = {k: v.to(device) for k, v in inputs.items()}
-                inputs["labels"] = inputs["input_ids"].clone()
-            
+
             outputs = model(**inputs)
             loss = outputs.loss
-            
-            total_loss += loss.item() * inputs["input_ids"].size(1)
-            total_tokens += inputs["input_ids"].size(1)
-    
-    if total_tokens == 0:
-        print("Warning: No tokens processed!")
-        return float('inf')
-    
-    avg_loss = total_loss / total_tokens
-    perplexity = torch.exp(torch.tensor(avg_loss)).item()
-    print(f"Perplexity calculation completed: {perplexity:.3f}")
-    
+            seq_len = inputs["input_ids"].size(1)
+
+            total_neg_log_likelihood += loss.item() * seq_len
+            total_tokens += seq_len
+
+            avg_loss_so_far = total_neg_log_likelihood / total_tokens
+            if normalized and vocab_size:
+                normalized_loss_so_far = avg_loss_so_far / math.log(vocab_size)
+                pbar.set_postfix(
+                    avg_loss=f"{avg_loss_so_far:.4f}",
+                    norm_loss=f"{normalized_loss_so_far:.4f}",
+                )
+            else:
+                ppl_so_far = math.exp(avg_loss_so_far)
+                pbar.set_postfix(
+                    avg_loss=f"{avg_loss_so_far:.4f}",
+                    ppl=f"{ppl_so_far:.2f}",
+                )
+
     model.train()
-    return perplexity
+
+    if total_tokens == 0:
+        return float("inf")
+
+    avg_loss = total_neg_log_likelihood / total_tokens
+
+    if normalized and vocab_size:
+        return avg_loss / math.log(vocab_size)  # normalized loss, <=1 for better-than-random
+    else:
+        return math.exp(avg_loss)  # perplexity
+
+
+
+
 
 def load_model_and_tokenizer(model_path, device="auto"):
     """Load model and tokenizer from path"""

@@ -54,7 +54,7 @@ class IterativePruner:
             print(f"Layers remaining: {layers_remaining}")
             
             # Test after pruning
-            ppl_after_prune = calculate_perplexity(current_model, self.tokenizer, dataset=dataset.eval_dataset, max_samples=20)
+            ppl_after_prune = calculate_perplexity(current_model, self.tokenizer, dataset=dataset.eval_dataset)
             print(f"Perplexity after pruning: {ppl_after_prune:.3f}")
             
             # Apply LoRA to previous layer
@@ -80,7 +80,7 @@ class IterativePruner:
             torch.cuda.empty_cache()
             
             # Test after training
-            ppl_after_train = calculate_perplexity(current_model, self.tokenizer, dataset=dataset.eval_dataset, max_samples=20)
+            ppl_after_train = calculate_perplexity(current_model, self.tokenizer, dataset=dataset.eval_dataset)
             print(f"Perplexity after training: {ppl_after_train:.3f}")
             
             # Log step with training info
@@ -223,7 +223,7 @@ class WindowPruner:
         print(f"Remaining layers: {layers_remaining}")
         
         # Test after pruning
-        ppl_after_prune = calculate_perplexity(self.model, self.tokenizer, dataset=dataset.eval_dataset, max_samples=20)
+        ppl_after_prune = calculate_perplexity(self.model, self.tokenizer, dataset=dataset.eval_dataset)
         print(f"Perplexity after pruning: {ppl_after_prune:.3f}")
         
         # Apply LoRA to last few MLP layers
@@ -262,7 +262,7 @@ class WindowPruner:
         torch.cuda.empty_cache()
         
         # Test after training
-        final_ppl = calculate_perplexity(model, self.tokenizer, dataset=dataset.eval_dataset, max_samples=20)
+        final_ppl = calculate_perplexity(model, self.tokenizer, dataset=dataset.eval_dataset)
         print(f"Final perplexity: {final_ppl:.3f}")
         
         logger.log_step({
