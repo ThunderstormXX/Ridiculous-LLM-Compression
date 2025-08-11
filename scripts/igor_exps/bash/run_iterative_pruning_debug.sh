@@ -54,4 +54,6 @@ python scripts/igor_exps/unified_pruning.py \
     --num_layers $NUM_LAYERS \
     --start_layer $START_LAYER \
     --max_steps $MAX_STEPS \
-    --device auto
+    --device auto \
+    --skip_training \
+    --skip_perplexity

@@ -3,8 +3,7 @@
 # Default values
 MODEL_PATH="src/checkpoints/llama3.1-8b"
 WORKSPACE="./workspace"
-NUM_LAYERS=7
-START_LAYER=24
+WINDOW_SIZE=7
 DEVICES="3"
 MAX_STEPS=10
 
@@ -19,12 +18,8 @@ while [[ $# -gt 0 ]]; do
       WORKSPACE="${1#*=}"
       shift
       ;;
-    --num_layers=*)
-      NUM_LAYERS="${1#*=}"
-      shift
-      ;;
-    --start_layer=*)
-      START_LAYER="${1#*=}"
+    --window_size=*)
+      WINDOW_SIZE="${1#*=}"
       shift
       ;;
     --devices=*)
@@ -42,7 +37,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "Usage: $0 [--model_path=path] [--workspace=dir] [--num_layers=N] [--start_layer=N] [--devices=N] [--max_steps=N]"
+echo "Usage: $0 [--model_path=path] [--workspace=dir] [--window_size=N] [--devices=N] [--max_steps=N]"
 
 export CUDA_DEVICE_ORDER='PCI_BUS_ID'
 export CUDA_VISIBLE_DEVICES=$DEVICES
@@ -50,8 +45,9 @@ export CUDA_VISIBLE_DEVICES=$DEVICES
 python scripts/igor_exps/unified_pruning.py \
     --model_path $MODEL_PATH \
     --workspace $WORKSPACE \
-    --method iterative \
-    --num_layers $NUM_LAYERS \
-    --start_layer $START_LAYER \
+    --method window \
+    --window_size $WINDOW_SIZE \
     --max_steps $MAX_STEPS \
-    --device auto
+    --device auto \
+    --skip_training \
+    --skip_perplexity

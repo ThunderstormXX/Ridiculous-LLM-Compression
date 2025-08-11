@@ -17,6 +17,8 @@ def main():
     parser.add_argument("--method", choices=["iterative", "window"], required=True, help="Pruning method")
     parser.add_argument("--max_steps", type=int, default=1000, help="Training steps")
     parser.add_argument("--device", default="auto", help="Device to use")
+    parser.add_argument("--skip_training", action="store_true", help="Skip training (debug mode)")
+    parser.add_argument("--skip_perplexity", action="store_true", help="Skip perplexity calculations (debug mode)")
     
     # Method-specific parameters
     parser.add_argument("--num_layers", type=int, default=3, help="Number of layers to prune (iterative)")
@@ -39,33 +41,48 @@ def main():
     model, tokenizer = load_model_and_tokenizer(args.model_path, device=device)
     print(f"Model loaded: {get_model_layers(model)} layers")
     
-    print("Loading cached dataset...")
-    from datasets import load_from_disk
-    cached_dataset_path = os.path.join(os.path.dirname(__file__), '../../cached_dataset')
-    raw_dataset = load_from_disk(cached_dataset_path)
-    
-    print("Calculating baseline perplexity...")
-    baseline_ppl = calculate_perplexity(model, tokenizer, dataset=raw_dataset['validation'])
-    print(f"Baseline perplexity: {baseline_ppl:.3f}")
-    
-    # Tokenize dataset for training
-    print("Tokenizing dataset for training...")
-    def tokenize_function(examples):
-        return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=512)
-    
-    tokenized_dataset = raw_dataset.map(tokenize_function, batched=True, remove_columns=raw_dataset['train'].column_names)
-    
-    def format_dataset(examples):
-        examples["labels"] = examples["input_ids"].copy()
-        return examples
-    
-    tokenized_dataset = tokenized_dataset.map(format_dataset, batched=True)
-    
-    # Create simple dataset object for training
-    class SimpleDataset:
-        def __init__(self, train_data, eval_data):
-            self.train_dataset = train_data
-            self.eval_dataset = eval_data
+    # Skip dataset loading in debug mode
+    if args.skip_training and args.skip_perplexity:
+        print("Skipping dataset loading (debug mode)")
+        baseline_ppl = 0.0
+        dataset_obj = None
+    else:
+        print("Loading cached dataset...")
+        from datasets import load_from_disk
+        cached_dataset_path = os.path.join(os.path.dirname(__file__), '../../cached_dataset')
+        raw_dataset = load_from_disk(cached_dataset_path)
+        
+        print("Calculating baseline perplexity...")
+        if not args.skip_perplexity:
+            baseline_ppl = calculate_perplexity(model, tokenizer, dataset=raw_dataset['validation'])
+            print(f"Baseline perplexity: {baseline_ppl:.3f}")
+        else:
+            baseline_ppl = 0.0
+            print("Skipping baseline perplexity calculation (debug mode)")
+        
+        # Tokenize dataset for training
+        if not args.skip_training:
+            print("Tokenizing dataset for training...")
+            def tokenize_function(examples):
+                return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=512)
+            
+            tokenized_dataset = raw_dataset.map(tokenize_function, batched=True, remove_columns=raw_dataset['train'].column_names)
+            
+            def format_dataset(examples):
+                examples["labels"] = examples["input_ids"].copy()
+                return examples
+            
+            tokenized_dataset = tokenized_dataset.map(format_dataset, batched=True)
+        else:
+            tokenized_dataset = None
+        
+        # Create simple dataset object for training
+        class SimpleDataset:
+            def __init__(self, train_data, eval_data):
+                self.train_dataset = train_data
+                self.eval_dataset = eval_data
+        
+        dataset_obj = SimpleDataset(tokenized_dataset['train'] if tokenized_dataset else None, raw_dataset['validation'] if not args.skip_perplexity else None)
     
     # Initialize components
     trainer = Trainer(model, tokenizer, run_dir)
@@ -84,7 +101,6 @@ def main():
     if args.method == "iterative":
         pruner = IterativePruner(model, tokenizer, run_dir)
         search_strategy = DefaultIterativeStrategy()
-        dataset_obj = SimpleDataset(tokenized_dataset['train'], raw_dataset['validation'])
         final_model = pruner.prune_and_heal(
             dataset=dataset_obj,
             trainer=trainer,
@@ -92,31 +108,39 @@ def main():
             start_layer=args.start_layer,
             num_layers=args.num_layers,
             max_steps=args.max_steps,
-            search_strategy=search_strategy
+            search_strategy=search_strategy,
+            skip_training=args.skip_training,
+            skip_perplexity=args.skip_perplexity
         )
         method_suffix = "iter"
     else:  # window
         pruner = WindowPruner(model, tokenizer, run_dir)
         search_strategy = DefaultWindowStrategy()
-        dataset_obj = SimpleDataset(tokenized_dataset['train'], raw_dataset['validation'])
         final_model = pruner.prune_and_heal(
             dataset=dataset_obj,
             trainer=trainer,
             logger=logger,
             window_size=args.window_size,
             max_steps=args.max_steps,
-            search_strategy=search_strategy
+            search_strategy=search_strategy,
+            skip_training=args.skip_training,
+            skip_perplexity=args.skip_perplexity
         )
         method_suffix = "window"
     
     # Save final model
     model_name = os.path.basename(args.model_path.rstrip('/'))
-    output_path = f"src/checkpoints/{model_name}_p_{method_suffix}"
+    debug_suffix = "_debug" if args.skip_training else ""
+    output_path = f"src/checkpoints/{model_name}_p_{method_suffix}{debug_suffix}"
     os.makedirs("src/checkpoints", exist_ok=True)
     
     print(f"\nSaving final model to: {output_path}")
     safe_save_model(final_model, output_path)
     tokenizer.save_pretrained(output_path)
+    
+    if args.skip_training:
+        print(f"\n[DEBUG] Model saved: {output_path}")
+        print(f"[DEBUG] Model architecture: {final_model}")
     
     print("\nExperiment completed!")
     print(f"Results saved to: {run_dir}")

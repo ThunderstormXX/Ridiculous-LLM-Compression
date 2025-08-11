@@ -1,0 +1,26 @@
+[
+  {
+    "step": 0,
+    "action": "baseline",
+    "method": "iterative",
+    "layers_total": 32,
+    "perplexity": 0.20791671244967447,
+    "timestamp": "2025-08-11T18:25:28.437864"
+  },
+  {
+    "action": "prune",
+    "step": 1,
+    "removed_layer": 24,
+    "lora_layer": 23,
+    "perplexity": 0.21672090756528284,
+    "layers_remaining": 31,
+    "timestamp": "2025-08-11T18:26:32.020770"
+  },
+  {
+    "action": "skip_train",
+    "step": 1,
+    "lora_layer": 23,
+    "perplexity": 0.21672090756528284,
+    "timestamp": "2025-08-11T18:26:32.021251"
+  }
+]

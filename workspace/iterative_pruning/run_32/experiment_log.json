@@ -1,0 +1,122 @@
+[
+  {
+    "step": 0,
+    "action": "baseline",
+    "method": "iterative",
+    "layers_total": 32,
+    "perplexity": 0.0,
+    "timestamp": "2025-08-11T18:37:33.596448"
+  },
+  {
+    "action": "prune",
+    "step": 1,
+    "removed_layer": 24,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "layers_remaining": 31,
+    "timestamp": "2025-08-11T18:37:33.597398"
+  },
+  {
+    "action": "skip_train",
+    "step": 1,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "timestamp": "2025-08-11T18:37:33.597659"
+  },
+  {
+    "action": "prune",
+    "step": 2,
+    "removed_layer": 24,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "layers_remaining": 30,
+    "timestamp": "2025-08-11T18:37:33.598045"
+  },
+  {
+    "action": "skip_train",
+    "step": 2,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "timestamp": "2025-08-11T18:37:33.598270"
+  },
+  {
+    "action": "prune",
+    "step": 3,
+    "removed_layer": 24,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "layers_remaining": 29,
+    "timestamp": "2025-08-11T18:37:33.598663"
+  },
+  {
+    "action": "skip_train",
+    "step": 3,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "timestamp": "2025-08-11T18:37:33.598911"
+  },
+  {
+    "action": "prune",
+    "step": 4,
+    "removed_layer": 24,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "layers_remaining": 28,
+    "timestamp": "2025-08-11T18:37:33.599300"
+  },
+  {
+    "action": "skip_train",
+    "step": 4,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "timestamp": "2025-08-11T18:37:33.599526"
+  },
+  {
+    "action": "prune",
+    "step": 5,
+    "removed_layer": 24,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "layers_remaining": 27,
+    "timestamp": "2025-08-11T18:37:33.599903"
+  },
+  {
+    "action": "skip_train",
+    "step": 5,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "timestamp": "2025-08-11T18:37:33.600359"
+  },
+  {
+    "action": "prune",
+    "step": 6,
+    "removed_layer": 24,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "layers_remaining": 26,
+    "timestamp": "2025-08-11T18:37:33.600763"
+  },
+  {
+    "action": "skip_train",
+    "step": 6,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "timestamp": "2025-08-11T18:37:33.601044"
+  },
+  {
+    "action": "prune",
+    "step": 7,
+    "removed_layer": 24,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "layers_remaining": 25,
+    "timestamp": "2025-08-11T18:37:33.601507"
+  },
+  {
+    "action": "skip_train",
+    "step": 7,
+    "lora_layer": 23,
+    "perplexity": 0.0,
+    "timestamp": "2025-08-11T18:37:33.601826"
+  }
+]

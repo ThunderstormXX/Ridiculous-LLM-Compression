@@ -14,14 +14,14 @@ class LayerSearchStrategy:
         raise NotImplementedError
 
 class DefaultIterativeStrategy(LayerSearchStrategy):
-    """Default strategy for iterative pruning - returns constant layer 19"""
+    """Default strategy for iterative pruning - returns constant layer 24"""
     def find_start_layer(self, model, tokenizer, num_layers):
-        return 19
+        return 24
 
 class DefaultWindowStrategy(LayerSearchStrategy):
-    """Default strategy for window pruning - returns constant layer 3"""
+    """Default strategy for window pruning - returns constant layer 14"""
     def find_start_layer(self, model, tokenizer, num_layers):
-        return 19
+        return 14
 
 class IterativePruner:
     def __init__(self, model, tokenizer, workspace_dir="./workspace"):
@@ -29,86 +29,146 @@ class IterativePruner:
         self.tokenizer = tokenizer
         self.workspace_dir = workspace_dir
         self.current_target_modules = []
+        self.lora_initialized = False  # ← флаг, что PEFT уже есть
         os.makedirs(workspace_dir, exist_ok=True)
         
-    def prune_and_heal(self, dataset, trainer, logger, start_layer=0, num_layers=3, max_steps=1000, search_strategy=None):
-        """Iteratively prune layers and apply LoRA healing"""
+    def prune_and_heal(self, dataset, trainer, logger, start_layer=0, num_layers=3, max_steps=1000,
+                    search_strategy=None, skip_training=False, skip_perplexity=False, stride=2):
+        """Iteratively prune layers and apply LoRA healing.
+
+        By default uses stride=2 which produces the pattern:
+        remove start_layer, apply LoRA to start_layer-1,
+        remove start_layer-2, apply LoRA to start_layer-3, ...
+        """
         current_model = self.model
-        steps_per_iter = max_steps // num_layers
+        steps_per_iter = max_steps // max(1, num_layers)
         total_steps_used = 0
-        
-        # Use search strategy if provided
+
         if search_strategy is not None:
             start_layer = search_strategy.find_start_layer(current_model, self.tokenizer, num_layers)
             print(f"Search strategy found start layer: {start_layer}")
-        
-        for step in range(num_layers):
-            layer_to_remove = start_layer
-            layer_for_lora = start_layer - 1 if start_layer > 0 else 0
-            
+
+        # Compute removal indices (descending) with given stride (default 2)
+        removal_indices = []
+        for k in range(num_layers):
+            idx = start_layer - k * stride
+            if idx < 0:
+                print(f"Planned index {idx} < 0: stopping early (will remove {len(removal_indices)} layers).")
+                break
+            removal_indices.append(idx)
+
+        if len(removal_indices) == 0:
+            print("No layers to remove (start_layer too small).")
+            return current_model
+
+        print(f"Planned removal sequence (descending): {removal_indices}")
+
+        for step, layer_to_remove in enumerate(removal_indices):
+            # compute layer for LoRA (previous layer)
+            layer_for_lora = layer_to_remove - 1 if layer_to_remove > 0 else 0
+
             print(f"\n=== Step {step+1}: Removing layer {layer_to_remove}, LoRA on layer {layer_for_lora} ===")
-            
-            # Remove layer
+
+            # Remove layer (safe: we remove from high indices to low, so lower indices stay stable)
             current_model = self._remove_layer(current_model, layer_to_remove)
             layers_remaining = get_model_layers(current_model)
             print(f"Layers remaining: {layers_remaining}")
-            
+
             # Test after pruning
-            ppl_after_prune = calculate_perplexity(current_model, self.tokenizer, dataset=dataset.eval_dataset)
-            print(f"Perplexity after pruning: {ppl_after_prune:.3f}")
-            
-            # Apply LoRA to previous layer
-            print(f"Applying LoRA to layer {layer_for_lora}...")
-            current_model = self._apply_lora_selective(current_model, layer_for_lora)
-            
-            # Train only the latest LoRA parameters
-            remaining_budget = max_steps - total_steps_used
-            current_steps = min(steps_per_iter, remaining_budget)
-            print(f"Training LoRA on layer {layer_for_lora} ({current_steps} steps, {total_steps_used}/{max_steps} used)...")
-            
-            # Freeze all parameters except the latest LoRA
-            for name, param in current_model.named_parameters():
-                if f"layers.{layer_for_lora}." in name and "lora" in name:
-                    param.requires_grad = True
-                else:
+            if not skip_perplexity and dataset and dataset.eval_dataset:
+                ppl_after_prune = calculate_perplexity(current_model, self.tokenizer, dataset=dataset.eval_dataset)
+                print(f"Perplexity after pruning: {ppl_after_prune:.3f}")
+            else:
+                ppl_after_prune = 0.0
+                print("Skipping perplexity calculation (debug mode)")
+
+            # Apply LoRA to previous layer (always, if exists)
+            if layer_for_lora >= 0:
+                print(f"Applying LoRA to layer {layer_for_lora}...")
+                current_model = self._apply_lora_selective(current_model, layer_for_lora)
+            else:
+                print("No previous layer to apply LoRA to (index < 0).")
+
+            if not skip_training:
+                # Train only the latest LoRA parameters
+                remaining_budget = max_steps - total_steps_used
+                current_steps = min(steps_per_iter, remaining_budget)
+                print(f"Training LoRA on layer {layer_for_lora} ({current_steps} steps, {total_steps_used}/{max_steps} used)...")
+
+                # First freeze everything
+                for _, param in current_model.named_parameters():
                     param.requires_grad = False
-            
-            torch.cuda.empty_cache()
-            trainer.model = current_model
-            current_model = trainer.train(dataset, max_steps=current_steps)
-            total_steps_used += current_steps
-            torch.cuda.empty_cache()
-            
-            # Test after training
-            ppl_after_train = calculate_perplexity(current_model, self.tokenizer, dataset=dataset.eval_dataset)
-            print(f"Perplexity after training: {ppl_after_train:.3f}")
-            
+
+                # Then enable training for adapter-related parameters only.
+                # We rely on adapter name pattern used in _apply_lora_selective: "lora_layer_{layer_idx}"
+                adapter_name = f"lora_layer_{layer_for_lora}"
+                enabled_any = False
+                for name, param in current_model.named_parameters():
+                    # Enable params that belong to this adapter or contain both layer path and 'lora'
+                    if adapter_name in name or (f"layers.{layer_for_lora}." in name and "lora" in name):
+                        param.requires_grad = True
+                        enabled_any = True
+
+                if not enabled_any:
+                    # Fallback: enable any parameter with 'lora' in name (defensive)
+                    for name, param in current_model.named_parameters():
+                        if "lora" in name:
+                            param.requires_grad = True
+
+                torch.cuda.empty_cache()
+                trainer.model = current_model
+                current_model = trainer.train(dataset, max_steps=current_steps)
+                total_steps_used += current_steps
+                torch.cuda.empty_cache()
+
+                # Test after training
+                if not skip_perplexity and dataset and dataset.eval_dataset:
+                    ppl_after_train = calculate_perplexity(current_model, self.tokenizer, dataset=dataset.eval_dataset)
+                    print(f"Perplexity after training: {ppl_after_train:.3f}")
+                else:
+                    ppl_after_train = 0.0
+                    print("Skipping perplexity calculation (debug mode)")
+            else:
+                print("Skipping training (debug mode)")
+                ppl_after_train = ppl_after_prune
+
             # Log step with training info
             logger.log_step({
-                "action": "prune", 
-                "step": step + 1, 
+                "action": "prune",
+                "step": step + 1,
                 "removed_layer": layer_to_remove,
                 "lora_layer": layer_for_lora,
                 "perplexity": ppl_after_prune,
                 "layers_remaining": layers_remaining
             })
-            logger.log_step({
-                "action": "train", 
-                "step": step + 1, 
-                "lora_layer": layer_for_lora,
-                "perplexity": ppl_after_train,
-                "training_steps": current_steps,
-                "total_steps_used": total_steps_used,
-                "budget_remaining": max_steps - total_steps_used
-            })
-            
-            print(f"Step {step+1} completed! Budget used: {total_steps_used}/{max_steps}")
-            
-            if total_steps_used >= max_steps:
-                print("Training budget exhausted!")
-                break
-                
+            if not skip_training:
+                logger.log_step({
+                    "action": "train",
+                    "step": step + 1,
+                    "lora_layer": layer_for_lora,
+                    "perplexity": ppl_after_train,
+                    "training_steps": current_steps,
+                    "total_steps_used": total_steps_used,
+                    "budget_remaining": max_steps - total_steps_used
+                })
+            else:
+                logger.log_step({
+                    "action": "skip_train",
+                    "step": step + 1,
+                    "lora_layer": layer_for_lora,
+                    "perplexity": ppl_after_train
+                })
+
+            if not skip_training:
+                print(f"Step {step+1} completed! Budget used: {total_steps_used}/{max_steps}")
+                if total_steps_used >= max_steps:
+                    print("Training budget exhausted!")
+                    break
+            else:
+                print(f"Step {step+1} completed! (debug mode - no training)")
+
         return current_model
+
     
     def _remove_layer(self, model, layer_idx):
         """Remove specified decoder layer"""
@@ -136,10 +196,6 @@ class IterativePruner:
         
         return get_peft_model(model, lora_config)
     
-    def _apply_lora_selective(self, model, layer_idx):
-        """Apply LoRA to specific layer for selective training"""
-        return self._apply_lora(model, layer_idx)
-    
     def _get_target_modules(self, model, layer_idx):
         """Get target modules for LoRA based on model architecture"""
         model_type = model.config.model_type.lower()
@@ -158,9 +214,38 @@ class IterativePruner:
         else:
             return ["gate_proj", "down_proj", "up_proj"]
     
+    def _apply_lora_selective(self, model, layer_idx):
+        target_modules = self._get_target_modules(model, layer_idx)
+        lora_config = LoraConfig(
+            r=64,
+            lora_alpha=64,
+            target_modules=target_modules,
+            lora_dropout=0.05,
+            bias="none",
+            task_type=TaskType.CAUSAL_LM
+        )
+
+        from peft import PeftModel
+
+        if not self.lora_initialized:
+            model = get_peft_model(model, lora_config)
+            self.lora_initialized = True
+        else:
+            if not isinstance(model, PeftModel):
+                raise RuntimeError("Model is not PEFT-wrapped but lora_initialized=True")
+            model.add_adapter(f"lora_layer_{layer_idx}", lora_config)
+            model.set_adapter(f"lora_layer_{layer_idx}")
+
+        return model
+
+
     def _get_base_model(self, model):
         """Get base model from PEFT wrapper if needed"""
         from .utils import get_layers_base
+        from peft import PeftModel
+
+        while isinstance(model, PeftModel):
+            model = model.get_base_model()
         base = get_layers_base(model)
         if base is None:
             raise RuntimeError(f"Cannot find layers in {model.__class__.__name__}")
@@ -199,7 +284,7 @@ class WindowPruner:
                 
         return best_window, best_score
     
-    def prune_and_heal(self, dataset, trainer, logger, window_size=3, max_steps=1000, search_strategy=None):
+    def prune_and_heal(self, dataset, trainer, logger, window_size=3, max_steps=1000, search_strategy=None, skip_training=False, skip_perplexity=False):
         """Window-based pruning and healing"""
         # Use search strategy if provided, otherwise use default window finding
         if search_strategy is not None:
@@ -223,13 +308,24 @@ class WindowPruner:
         print(f"Remaining layers: {layers_remaining}")
         
         # Test after pruning
-        ppl_after_prune = calculate_perplexity(self.model, self.tokenizer, dataset=dataset.eval_dataset)
-        print(f"Perplexity after pruning: {ppl_after_prune:.3f}")
+        if not skip_perplexity and dataset and dataset.eval_dataset:
+            ppl_after_prune = calculate_perplexity(self.model, self.tokenizer, dataset=dataset.eval_dataset)
+            print(f"Perplexity after pruning: {ppl_after_prune:.3f}")
+        else:
+            ppl_after_prune = 0.0
+            print("Skipping perplexity calculation (debug mode)")
         
-        # Apply LoRA to last few MLP layers
-        last_layers = min(3, layers_remaining)
+        logger.log_step({
+            "step": 1,
+            "action": "prune",
+            "layers_removed": window_layers,
+            "layers_remaining": layers_remaining,
+            "perplexity": ppl_after_prune
+        })
+        
+        # Apply LoRA to all remaining MLP layers (always)
         target_modules = []
-        for i in range(layers_remaining - last_layers, layers_remaining):
+        for i in range(layers_remaining):
             target_modules.extend([f"model.layers.{i}.mlp.gate_proj", 
                                  f"model.layers.{i}.mlp.down_proj", 
                                  f"model.layers.{i}.mlp.up_proj"])
@@ -245,33 +341,39 @@ class WindowPruner:
         
         model = get_peft_model(self.model, lora_config)
         
-        logger.log_step({
-            "step": 1,
-            "action": "prune",
-            "layers_removed": window_layers,
-            "layers_remaining": layers_remaining,
-            "perplexity": ppl_after_prune
-        })
-        
-        # Train model
-        print(f"Fine-tuning with {max_steps} steps...")
-        torch.cuda.empty_cache()
-        
-        trainer.model = model
-        model = trainer.train(dataset, max_steps=max_steps)
-        torch.cuda.empty_cache()
-        
-        # Test after training
-        final_ppl = calculate_perplexity(model, self.tokenizer, dataset=dataset.eval_dataset)
-        print(f"Final perplexity: {final_ppl:.3f}")
-        
-        logger.log_step({
-            "step": 2,
-            "action": "train",
-            "perplexity": final_ppl,
-            "training_steps": max_steps,
-            "total_steps_used": max_steps
-        })
+        if not skip_training:
+            # Train model
+            print(f"Fine-tuning with {max_steps} steps...")
+            torch.cuda.empty_cache()
+            
+            trainer.model = model
+            model = trainer.train(dataset, max_steps=max_steps)
+            torch.cuda.empty_cache()
+            
+            # Test after training
+            if not skip_perplexity and dataset and dataset.eval_dataset:
+                final_ppl = calculate_perplexity(model, self.tokenizer, dataset=dataset.eval_dataset)
+                print(f"Final perplexity: {final_ppl:.3f}")
+            else:
+                final_ppl = 0.0
+                print("Skipping perplexity calculation (debug mode)")
+            
+            logger.log_step({
+                "step": 2,
+                "action": "train",
+                "perplexity": final_ppl,
+                "training_steps": max_steps,
+                "total_steps_used": max_steps
+            })
+        else:
+            print("Skipping training (debug mode)")
+            final_ppl = ppl_after_prune
+            
+            logger.log_step({
+                "step": 2,
+                "action": "skip_train",
+                "perplexity": final_ppl
+            })
         
         return model
     

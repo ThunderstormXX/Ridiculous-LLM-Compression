@@ -3,7 +3,7 @@
 # Default values
 MODEL_PATH="src/checkpoints/llama3.1-8b"
 WORKSPACE="./workspace"
-WINDOW_SIZE=3
+WINDOW_SIZE=7
 DEVICES="3"
 MAX_STEPS=10
 
