@@ -131,20 +131,33 @@ def main():
     # Save final model
     model_name = os.path.basename(args.model_path.rstrip('/'))
     debug_suffix = "_debug" if args.skip_training else ""
-    output_path = f"src/checkpoints/{model_name}_p_{method_suffix}{debug_suffix}"
+    
+    # Define paths for base model and adapter
+    base_output_path = f"src/checkpoints/{model_name}_p_{method_suffix}_base{debug_suffix}"
+    adapter_output_path = f"src/checkpoints/{model_name}_p_{method_suffix}{debug_suffix}"
     os.makedirs("src/checkpoints", exist_ok=True)
     
-    print(f"\nSaving final model to: {output_path}")
-    safe_save_model(final_model, output_path)
-    tokenizer.save_pretrained(output_path)
+    print(f"\nSaving models:")
+    print(f"Base model: {base_output_path}")
+    print(f"Adapter: {adapter_output_path}")
     
+    # Save base model (without adapter weights)
+    base_model = final_model.get_base_model()
+    base_model.save_pretrained(base_output_path)
+    tokenizer.save_pretrained(base_output_path)
+    
+    # Save only adapter weights
+    final_model.save_pretrained(adapter_output_path, save_embedding_layers=False)
+        
     if args.skip_training:
-        print(f"\n[DEBUG] Model saved: {output_path}")
+        print(f"\n[DEBUG] Base model saved: {base_output_path}")
+        print(f"[DEBUG] Adapter saved: {adapter_output_path}")
         print(f"[DEBUG] Model architecture: {final_model}")
     
     print("\nExperiment completed!")
     print(f"Results saved to: {run_dir}")
-    print(f"Final model saved to: {output_path}")
+    print(f"Base model saved to: {base_output_path}")
+    print(f"Adapter saved to: {adapter_output_path}")
 
 if __name__ == "__main__":
     main()

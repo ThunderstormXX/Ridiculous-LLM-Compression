@@ -4,140 +4,140 @@
     "action": "baseline",
     "method": "iterative",
     "layers_total": 32,
-    "perplexity": 0.20791671244967447,
-    "timestamp": "2025-08-11T19:34:05.489679"
+    "perplexity": 0.20516575151196703,
+    "timestamp": "2025-08-11T20:55:09.106938"
   },
   {
     "action": "prune",
     "step": 1,
     "removed_layer": 24,
     "lora_layer": 23,
-    "perplexity": 0.21672090756528284,
+    "perplexity": 0.21117773691864836,
     "layers_remaining": 31,
-    "timestamp": "2025-08-11T19:36:50.456371"
+    "timestamp": "2025-08-11T20:55:14.678965"
   },
   {
     "action": "train",
     "step": 1,
     "lora_layer": 23,
-    "perplexity": 0.21675433035884775,
+    "perplexity": 0.21122518488490447,
     "training_steps": 2,
     "total_steps_used": 2,
     "budget_remaining": 12,
-    "timestamp": "2025-08-11T19:36:50.456916"
+    "timestamp": "2025-08-11T20:55:14.679354"
   },
   {
     "action": "prune",
     "step": 2,
     "removed_layer": 22,
     "lora_layer": 21,
-    "perplexity": 0.22599127607320166,
+    "perplexity": 0.2191106178994576,
     "layers_remaining": 30,
-    "timestamp": "2025-08-11T19:41:20.314764"
+    "timestamp": "2025-08-11T20:55:19.781806"
   },
   {
     "action": "train",
     "step": 2,
     "lora_layer": 21,
-    "perplexity": 0.22598514579684145,
+    "perplexity": 0.21918692452818828,
     "training_steps": 2,
     "total_steps_used": 4,
     "budget_remaining": 10,
-    "timestamp": "2025-08-11T19:41:20.315283"
+    "timestamp": "2025-08-11T20:55:19.782248"
   },
   {
     "action": "prune",
     "step": 3,
     "removed_layer": 20,
     "lora_layer": 19,
-    "perplexity": 0.23865053044711013,
+    "perplexity": 0.23137938030200006,
     "layers_remaining": 29,
-    "timestamp": "2025-08-11T19:45:45.365081"
+    "timestamp": "2025-08-11T20:55:24.726112"
   },
   {
     "action": "train",
     "step": 3,
     "lora_layer": 19,
-    "perplexity": 0.23864862645867016,
+    "perplexity": 0.23132996786371793,
     "training_steps": 2,
     "total_steps_used": 6,
     "budget_remaining": 8,
-    "timestamp": "2025-08-11T19:45:45.365614"
+    "timestamp": "2025-08-11T20:55:24.726577"
   },
   {
     "action": "prune",
     "step": 4,
     "removed_layer": 18,
     "lora_layer": 17,
-    "perplexity": 0.25598228380031135,
+    "perplexity": 0.24757535922682677,
     "layers_remaining": 28,
-    "timestamp": "2025-08-11T19:50:01.127296"
+    "timestamp": "2025-08-11T20:55:29.628446"
   },
   {
     "action": "train",
     "step": 4,
     "lora_layer": 17,
-    "perplexity": 0.2559791756033041,
+    "perplexity": 0.24751384724894213,
     "training_steps": 2,
     "total_steps_used": 8,
     "budget_remaining": 6,
-    "timestamp": "2025-08-11T19:50:01.127881"
+    "timestamp": "2025-08-11T20:55:29.629124"
   },
   {
     "action": "prune",
     "step": 5,
     "removed_layer": 16,
     "lora_layer": 15,
-    "perplexity": 0.28381301958529026,
+    "perplexity": 0.27569416271453245,
     "layers_remaining": 27,
-    "timestamp": "2025-08-11T19:54:03.402727"
+    "timestamp": "2025-08-11T20:55:34.323037"
   },
   {
     "action": "train",
     "step": 5,
     "lora_layer": 15,
-    "perplexity": 0.28382435487071195,
+    "perplexity": 0.27567622369223205,
     "training_steps": 2,
     "total_steps_used": 10,
     "budget_remaining": 4,
-    "timestamp": "2025-08-11T19:54:03.403416"
+    "timestamp": "2025-08-11T20:55:34.323626"
   },
   {
     "action": "prune",
     "step": 6,
     "removed_layer": 14,
     "lora_layer": 13,
-    "perplexity": 0.32231562977795686,
+    "perplexity": 0.31731056272135694,
     "layers_remaining": 26,
-    "timestamp": "2025-08-11T19:58:00.549171"
+    "timestamp": "2025-08-11T20:55:39.519782"
   },
   {
     "action": "train",
     "step": 6,
     "lora_layer": 13,
-    "perplexity": 0.32231900688317416,
+    "perplexity": 0.31729565758439293,
     "training_steps": 2,
     "total_steps_used": 12,
     "budget_remaining": 2,
-    "timestamp": "2025-08-11T19:58:00.549802"
+    "timestamp": "2025-08-11T20:55:39.520409"
   },
   {
     "action": "prune",
     "step": 7,
     "removed_layer": 12,
     "lora_layer": 11,
-    "perplexity": 0.37281349971395666,
+    "perplexity": 0.3653288293326576,
     "layers_remaining": 25,
-    "timestamp": "2025-08-11T20:01:49.574163"
+    "timestamp": "2025-08-11T20:55:44.603457"
   },
   {
     "action": "train",
     "step": 7,
     "lora_layer": 11,
-    "perplexity": 0.372809588931058,
+    "perplexity": 0.3654226520901389,
     "training_steps": 2,
     "total_steps_used": 14,
     "budget_remaining": 0,
-    "timestamp": "2025-08-11T20:01:49.574855"
+    "timestamp": "2025-08-11T20:55:44.604144"
   }
 ]

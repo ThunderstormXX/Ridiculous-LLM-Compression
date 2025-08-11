@@ -166,7 +166,9 @@ class IterativePruner:
                     break
             else:
                 print(f"Step {step+1} completed! (debug mode - no training)")
-
+        
+        
+        print(current_model)
         return current_model
 
     

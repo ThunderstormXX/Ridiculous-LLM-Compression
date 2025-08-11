@@ -12,57 +12,57 @@
     {
       "epoch": 0,
       "iterations": 0,
-      "loss": 0.45236098766326904,
-      "perplexity": 1.572019338607788,
+      "loss": 0.42896607518196106,
+      "perplexity": 1.535668969154358,
       "step": 0
     },
     {
       "epoch": 0,
       "iterations": 0,
-      "loss": 1.3654842376708984,
-      "perplexity": 3.917619466781616,
+      "loss": 1.3714872598648071,
+      "perplexity": 3.9412078857421875,
       "step": 0
     },
     {
       "epoch": 0,
       "iterations": 0,
-      "loss": 1.2596369981765747,
-      "perplexity": 3.524141788482666,
+      "loss": 1.261739730834961,
+      "perplexity": 3.531559944152832,
       "step": 0
     },
     {
       "epoch": 0,
       "iterations": 0,
-      "loss": 1.318158507347107,
-      "perplexity": 3.736534357070923,
+      "loss": 1.3145188093185425,
+      "perplexity": 3.722959041595459,
       "step": 0
     },
     {
       "epoch": 0,
       "iterations": 0,
-      "loss": 0.5310103297233582,
-      "perplexity": 1.7006497383117676,
+      "loss": 0.535243809223175,
+      "perplexity": 1.70786452293396,
       "step": 0
     },
     {
       "epoch": 0,
       "iterations": 0,
-      "loss": 0.7536638975143433,
-      "perplexity": 2.1247708797454834,
+      "loss": 0.6903124451637268,
+      "perplexity": 1.9943385124206543,
       "step": 0
     },
     {
       "epoch": 0,
       "iterations": 0,
-      "loss": 0.494128942489624,
-      "perplexity": 1.63906991481781,
+      "loss": 0.4946225881576538,
+      "perplexity": 1.6398792266845703,
       "step": 0
     },
     {
       "epoch": 0,
       "iterations": 0,
-      "loss": 1.3635337352752686,
-      "perplexity": 3.9099857807159424,
+      "loss": 1.3573122024536133,
+      "perplexity": 3.885735273361206,
       "step": 0
     }
   ],
@@ -83,7 +83,7 @@
       "attributes": {}
     }
   },
-  "total_flos": 295055193538560.0,
+  "total_flos": 298186224697344.0,
   "train_batch_size": 1,
   "trial_name": null,
   "trial_params": null
