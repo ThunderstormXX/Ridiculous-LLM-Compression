@@ -238,21 +238,257 @@ class IterativePruner:
             model.add_adapter(f"lora_layer_{layer_idx}", lora_config)
             model.set_adapter(f"lora_layer_{layer_idx}")
 
-        print(model)
         return model
 
+# def get_model_layers(model):
+#     # Предполагается, что у модели есть base_model.layers - список слоев
+#     base_model = model.model if hasattr(model, "model") else model
+#     return list(base_model.layers)
 
-    def _get_base_model(self, model):
-        """Get base model from PEFT wrapper if needed"""
-        from .utils import get_layers_base
-        from peft import PeftModel
+# class IterativePruner:
+#     def __init__(self, model, tokenizer, workspace_dir="./workspace"):
+#         self.model = model
+#         self.tokenizer = tokenizer
+#         self.workspace_dir = workspace_dir
+#         self.lora_initialized = False
+#         self.layer_mapping = {i: i for i in range(len(get_model_layers(self.model)))}
+#         os.makedirs(workspace_dir, exist_ok=True)
 
-        while isinstance(model, PeftModel):
-            model = model.get_base_model()
-        base = get_layers_base(model)
-        if base is None:
-            raise RuntimeError(f"Cannot find layers in {model.__class__.__name__}")
-        return base
+#     def _update_layer_mapping_after_removal(self, removed_mapped_idx):
+#         new_mapping = {}
+#         for old_idx, mapped_idx in self.layer_mapping.items():
+#             if mapped_idx < removed_mapped_idx:
+#                 new_mapping[old_idx] = mapped_idx
+#             elif mapped_idx > removed_mapped_idx:
+#                 new_mapping[old_idx] = mapped_idx - 1
+#             # else: пропускаем удалённый слой
+#         self.layer_mapping = new_mapping
+
+#     def prune_and_heal(self, dataset, trainer, logger, start_layer=0, num_layers=3, max_steps=1000,
+#                     search_strategy=None, skip_training=False, skip_perplexity=False, stride=2):
+#         current_model = self.model
+#         steps_per_iter = max_steps // max(1, num_layers)
+#         total_steps_used = 0
+
+#         if search_strategy is not None:
+#             start_layer = search_strategy.find_start_layer(current_model, self.tokenizer, num_layers)
+#             print(f"Search strategy found start layer: {start_layer}")
+
+#         removal_indices = []
+#         for k in range(num_layers):
+#             idx = start_layer - k * stride
+#             if idx < 0:
+#                 print(f"Planned index {idx} < 0: stopping early (removed {len(removal_indices)} layers).")
+#                 break
+#             removal_indices.append(idx)
+
+#         if len(removal_indices) == 0:
+#             print("No layers to remove (start_layer too small).")
+#             return current_model
+
+#         print(f"Planned removal sequence (descending): {removal_indices}")
+
+#         for step, layer_to_remove_old_idx in enumerate(removal_indices):
+#             # Получаем текущий индекс слоя с учетом смещений
+#             if layer_to_remove_old_idx not in self.layer_mapping:
+#                 print(f"Layer {layer_to_remove_old_idx} was already removed, skipping.")
+#                 continue
+#             layer_to_remove = self.layer_mapping[layer_to_remove_old_idx]
+
+#             # Определяем слой для LoRA (предыдущий по старой нумерации)
+#             layer_for_lora_old_idx = layer_to_remove_old_idx - 1
+#             layer_for_lora = self.layer_mapping.get(layer_for_lora_old_idx, None)
+
+#             print(f"\n=== Step {step+1}: Removing layer {layer_to_remove} (old idx {layer_to_remove_old_idx}), "
+#                   f"LoRA on layer {layer_for_lora} (old idx {layer_for_lora_old_idx}) ===")
+
+#             # Удаляем слой
+#             current_model = self._remove_layer(current_model, layer_to_remove)
+#             self._update_layer_mapping_after_removal(layer_to_remove)
+
+#             layers_remaining = get_model_layers(current_model)
+#             print(f"Layers remaining: {len(layers_remaining)}")
+
+#             if not skip_perplexity and dataset and dataset.eval_dataset:
+#                 ppl_after_prune = calculate_perplexity(current_model, self.tokenizer, dataset=dataset.eval_dataset)
+#                 print(f"Perplexity after pruning: {ppl_after_prune:.3f}")
+#             else:
+#                 ppl_after_prune = 0.0
+#                 print("Skipping perplexity calculation (debug mode)")
+
+#             if layer_for_lora is not None and layer_for_lora >= 0:
+#                 print(f"Applying LoRA to layer {layer_for_lora}...")
+#                 current_model = self._apply_lora_selective(current_model, layer_for_lora)
+#             else:
+#                 print("No previous layer to apply LoRA to (index < 0 or removed).")
+
+#             if not skip_training:
+#                 remaining_budget = max_steps - total_steps_used
+#                 current_steps = min(steps_per_iter, remaining_budget)
+#                 print(f"Training LoRA on layer {layer_for_lora} ({current_steps} steps, {total_steps_used}/{max_steps} used)...")
+
+#                 # Freeze все параметры
+#                 for _, param in current_model.named_parameters():
+#                     param.requires_grad = False
+
+#                 adapter_name = f"lora_layer_{layer_for_lora}" if layer_for_lora is not None else None
+#                 enabled_any = False
+#                 for name, param in current_model.named_parameters():
+#                     if adapter_name and (adapter_name in name or (f"layers.{layer_for_lora}." in name and "lora" in name)):
+#                         param.requires_grad = True
+#                         enabled_any = True
+
+#                 if not enabled_any:
+#                     for name, param in current_model.named_parameters():
+#                         if "lora" in name:
+#                             param.requires_grad = True
+
+#                 torch.cuda.empty_cache()
+#                 trainer.model = current_model
+#                 current_model = trainer.train(dataset, max_steps=current_steps)
+#                 total_steps_used += current_steps
+#                 torch.cuda.empty_cache()
+
+#                 if not skip_perplexity and dataset and dataset.eval_dataset:
+#                     ppl_after_train = calculate_perplexity(current_model, self.tokenizer, dataset=dataset.eval_dataset)
+#                     print(f"Perplexity after training: {ppl_after_train:.3f}")
+#                 else:
+#                     ppl_after_train = 0.0
+#                     print("Skipping perplexity calculation (debug mode)")
+#             else:
+#                 print("Skipping training (debug mode)")
+#                 ppl_after_train = ppl_after_prune
+
+#             logger.log_step({
+#                 "action": "prune",
+#                 "step": step + 1,
+#                 "removed_layer": layer_to_remove,
+#                 "lora_layer": layer_for_lora,
+#                 "perplexity": ppl_after_prune,
+#                 "layers_remaining": len(layers_remaining)
+#             })
+#             if not skip_training:
+#                 logger.log_step({
+#                     "action": "train",
+#                     "step": step + 1,
+#                     "lora_layer": layer_for_lora,
+#                     "perplexity": ppl_after_train,
+#                     "training_steps": current_steps,
+#                     "total_steps_used": total_steps_used,
+#                     "budget_remaining": max_steps - total_steps_used
+#                 })
+#             else:
+#                 logger.log_step({
+#                     "action": "skip_train",
+#                     "step": step + 1,
+#                     "lora_layer": layer_for_lora,
+#                     "perplexity": ppl_after_train
+#                 })
+
+#             if not skip_training:
+#                 print(f"Step {step+1} completed! Budget used: {total_steps_used}/{max_steps}")
+#                 if total_steps_used >= max_steps:
+#                     print("Training budget exhausted!")
+#                     break
+#             else:
+#                 print(f"Step {step+1} completed! (debug mode - no training)")
+
+#         self.model = current_model
+#         print("Pruning and healing finished.")
+#         return current_model
+
+#     def _remove_layer(self, model, layer_idx):
+#         base_model = self._get_base_model(model)
+#         with torch.no_grad():
+#             layers = list(base_model.layers)
+#             if layer_idx < len(layers):
+#                 layers.pop(layer_idx)
+#                 base_model.layers = nn.ModuleList(layers)
+#                 base_model.config.num_hidden_layers = len(layers)
+#         return model
+
+#     def _apply_lora(self, model, layer_idx):
+#         target_modules = self._get_target_modules(model, layer_idx)
+#         lora_config = LoraConfig(
+#             r=64,
+#             lora_alpha=64,
+#             target_modules=target_modules,
+#             lora_dropout=0.05,
+#             bias="none",
+#             task_type=TaskType.CAUSAL_LM
+#         )
+#         return get_peft_model(model, lora_config)
+
+#     def _get_target_modules(self, model, layer_idx):
+#         model_type = model.config.model_type.lower()
+#         if "llama" in model_type or "mistral" in model_type:
+#             return [f"model.layers.{layer_idx}.mlp.gate_proj",
+#                     f"model.layers.{layer_idx}.mlp.down_proj", 
+#                     f"model.layers.{layer_idx}.mlp.up_proj"]
+#         elif "phi" in model_type:
+#             return [f"model.layers.{layer_idx}.mlp.fc1",
+#                     f"model.layers.{layer_idx}.mlp.fc2"]
+#         elif "qwen" in model_type:
+#             return [f"model.layers.{layer_idx}.mlp.w1",
+#                     f"model.layers.{layer_idx}.mlp.w2",
+#                     f"model.layers.{layer_idx}.mlp.c_proj"]
+#         else:
+#             return ["gate_proj", "down_proj", "up_proj"]
+
+#     def _apply_lora_selective(self, model, layer_idx):
+#         target_modules = self._get_target_modules(model, layer_idx)
+#         lora_config = LoraConfig(
+#             r=64,
+#             lora_alpha=64,
+#             target_modules=target_modules,
+#             lora_dropout=0.05,
+#             bias="none",
+#             task_type=TaskType.CAUSAL_LM
+#         )
+
+#         if not self.lora_initialized:
+#             model = get_peft_model(model, lora_config)
+#             self.lora_initialized = True
+#         else:
+#             if not isinstance(model, PeftModel):
+#                 raise RuntimeError("Model is not PEFT-wrapped but lora_initialized=True")
+#             adapter_name = f"lora_layer_{layer_idx}"
+#             model.add_adapter(adapter_name, lora_config)
+#             model.set_adapter(adapter_name)
+
+#         return model
+
+#     def _get_base_model(self, model):
+#         # Возвращает базовую модель с .layers, например, model.model или model.base_model
+#         if hasattr(model, "model"):
+#             return model.model
+#         elif hasattr(model, "base_model"):
+#             return model.base_model
+#         else:
+#             return model  # на крайний случай
+
+#     def save_model(self, path):
+#         """
+#         Пример функции сохранения модели с пересборкой ключей LoRA
+#         (реализуй под свои нужды)
+#         """
+#         # TODO: по необходимости поправить state_dict лоры тут, если есть смещение индексов
+#         self.model.save_pretrained(path)
+#         self.tokenizer.save_pretrained(path)
+#         print(f"Model and tokenizer saved to {path}")
+
+
+#     def _get_base_model(self, model):
+#         """Get base model from PEFT wrapper if needed"""
+#         from .utils import get_layers_base
+#         from peft import PeftModel
+
+#         while isinstance(model, PeftModel):
+#             model = model.get_base_model()
+#         base = get_layers_base(model)
+#         if base is None:
+#             raise RuntimeError(f"Cannot find layers in {model.__class__.__name__}")
+#         return base
 
 class WindowPruner:
     def __init__(self, model, tokenizer, workspace_dir="./workspace"):
