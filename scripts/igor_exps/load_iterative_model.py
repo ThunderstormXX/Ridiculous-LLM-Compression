@@ -56,6 +56,8 @@ def main():
     args = parser.parse_args()
     
     model, tokenizer = load_iterative_model(args.model_name, args.device)
+
+    print(model)
     
     if args.test_generation:
         print("\nTesting generation...")

@@ -125,8 +125,6 @@ def calculate_perplexity(
 
 
 
-
-
 def load_model_and_tokenizer(model_path, device="auto"):
     """Load model and tokenizer from path"""
     from transformers import AutoModelForCausalLM, AutoTokenizer

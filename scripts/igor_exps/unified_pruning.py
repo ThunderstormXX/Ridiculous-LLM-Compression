@@ -141,13 +141,20 @@ def main():
     print(f"Base model: {base_output_path}")
     print(f"Adapter: {adapter_output_path}")
     
-    # Save base model (without adapter weights)
-    base_model = final_model.get_base_model()
-    base_model.save_pretrained(base_output_path)
+    # Merge and save unified model
+    from peft import PeftModel
+    if isinstance(final_model, PeftModel):
+        print('Merging....')
+        merged_model = final_model.merge_and_unload()
+    else:
+        merged_model = final_model
+    
+    merged_model.save_pretrained(base_output_path)
     tokenizer.save_pretrained(base_output_path)
     
-    # Save only adapter weights
-    final_model.save_pretrained(adapter_output_path, save_embedding_layers=False)
+    # Save adapter separately
+    if isinstance(final_model, PeftModel):
+        final_model.save_pretrained(adapter_output_path, save_embedding_layers=False)
         
     if args.skip_training:
         print(f"\n[DEBUG] Base model saved: {base_output_path}")

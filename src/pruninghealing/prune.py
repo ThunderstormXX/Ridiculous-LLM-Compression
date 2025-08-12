@@ -238,6 +238,7 @@ class IterativePruner:
             model.add_adapter(f"lora_layer_{layer_idx}", lora_config)
             model.set_adapter(f"lora_layer_{layer_idx}")
 
+        print(model)
         return model
 
 
