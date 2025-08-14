@@ -3,12 +3,93 @@ import argparse
 import os
 import sys
 import torch
+import json
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 
 from src.pruninghealing import Trainer, DatasetLoader, IterativePruner, WindowPruner
 from src.pruninghealing.prune import DefaultIterativeStrategy, DefaultWindowStrategy
+from src.pruninghealing.importance_strategies import ImportanceBasedIterativeStrategy, ImportanceBasedWindowStrategy
+from src.pruninghealing.layer_importance import compute_layer_importances
 from src.pruninghealing.utils import load_model_and_tokenizer, calculate_perplexity, get_model_layers, safe_save_model
 from src.pruninghealing.logger import Logger
+
+def generate_hidden_states(model, tokenizer, output_path, cached_dataset, layer_type, max_samples, max_tokens):
+    """Generate hidden states for importance calculation"""
+    import numpy as np
+    
+    print(f"Using cached dataset for hidden states generation...")
+    dataset = cached_dataset['validation'].select(range(min(max_samples, len(cached_dataset['validation']))))
+    
+    hidden_states = {layer_type: {}}
+    num_layers = get_model_layers(model)
+    
+    # Initialize storage
+    for layer_idx in range(num_layers):
+        hidden_states[layer_type][str(layer_idx)] = {
+            'hidden_states': [],
+            'shapes': []
+        }
+    
+    model.eval()
+    with torch.no_grad():
+        for i, example in enumerate(dataset):
+            if i >= max_samples:
+                break
+            
+            text = example.get('text', str(example))
+            inputs = tokenizer(text, return_tensors="pt", max_length=max_tokens, truncation=True)
+            inputs = {k: v.to(model.device) for k, v in inputs.items()}
+            
+            # Hook to capture hidden states
+            layer_outputs = {}
+            
+            def make_hook(layer_idx):
+                def hook(module, input, output):
+                    if isinstance(output, tuple):
+                        output = output[0]
+                    layer_outputs[layer_idx] = output.cpu().numpy()
+                return hook
+            
+            # Register hooks
+            hooks = []
+            for layer_idx in range(num_layers):
+                if hasattr(model, 'model') and hasattr(model.model, 'layers'):
+                    layer = model.model.layers[layer_idx]
+                elif hasattr(model, 'layers'):
+                    layer = model.layers[layer_idx]
+                else:
+                    continue
+                    
+                if layer_type == 'mlp' and hasattr(layer, 'mlp'):
+                    hook = layer.mlp.register_forward_hook(make_hook(layer_idx))
+                elif layer_type == 'self_attn' and hasattr(layer, 'self_attn'):
+                    hook = layer.self_attn.register_forward_hook(make_hook(layer_idx))
+                else:
+                    hook = layer.register_forward_hook(make_hook(layer_idx))
+                hooks.append(hook)
+            
+            # Forward pass
+            outputs = model(**inputs)
+            
+            # Store hidden states
+            for layer_idx in range(num_layers):
+                if layer_idx in layer_outputs:
+                    hidden_state = layer_outputs[layer_idx]
+                    hidden_states[layer_type][str(layer_idx)]['hidden_states'].append(hidden_state.flatten().tolist())
+                    hidden_states[layer_type][str(layer_idx)]['shapes'].append(hidden_state.shape)
+            
+            # Remove hooks
+            for hook in hooks:
+                hook.remove()
+            
+            if (i + 1) % 10 == 0:
+                print(f"Processed {i + 1}/{max_samples} samples")
+    
+    # Save to JSON
+    with open(output_path, 'w') as f:
+        json.dump(hidden_states, f)
+    
+    print(f"Hidden states saved to {output_path}")
 
 def main():
     parser = argparse.ArgumentParser(description="Unified pruning and healing experiment")
@@ -19,6 +100,13 @@ def main():
     parser.add_argument("--device", default="auto", help="Device to use")
     parser.add_argument("--skip_training", action="store_true", help="Skip training (debug mode)")
     parser.add_argument("--skip_perplexity", action="store_true", help="Skip perplexity calculations (debug mode)")
+    
+    # Strategy parameters
+    parser.add_argument("--strategy", choices=["default", "importance"], default="default", help="Search strategy")
+    parser.add_argument("--hidden_path", type=str, help="Path to hidden states JSON (optional for importance strategy)")
+    parser.add_argument("--layer_type", type=str, default="mlp", help="Layer type for importance calculation")
+    parser.add_argument("--max_samples", type=int, default=80, help="Max samples for hidden states")
+    parser.add_argument("--max_tokens", type=int, default=100, help="Max tokens for hidden states")
     
     # Method-specific parameters
     parser.add_argument("--num_layers", type=int, default=3, help="Number of layers to prune (iterative)")
@@ -41,17 +129,39 @@ def main():
     model, tokenizer = load_model_and_tokenizer(args.model_path, device=device)
     print(f"Model loaded: {get_model_layers(model)} layers")
     
+    # Load cached dataset early for importance calculation
+    print("Loading cached dataset...")
+    from datasets import load_from_disk
+    cached_dataset_path = os.path.join(os.path.dirname(__file__), '../../cached_dataset')
+    raw_dataset = load_from_disk(cached_dataset_path)
+    
+    # Create search strategy
+    if args.strategy == "importance":
+        if not args.hidden_path:
+            print("Generating hidden states from cached dataset...")
+            hidden_path = os.path.join(run_dir, "hidden_states.json")
+            generate_hidden_states(model, tokenizer, hidden_path, raw_dataset, args.layer_type, args.max_samples, args.max_tokens)
+            args.hidden_path = hidden_path
+        
+        print(f"Computing layer importances from {args.hidden_path}...")
+        importances = compute_layer_importances(args.hidden_path, args.layer_type)
+        
+        if args.method == "iterative":
+            search_strategy = ImportanceBasedIterativeStrategy(importances)
+        else:
+            search_strategy = ImportanceBasedWindowStrategy(importances)
+    else:
+        if args.method == "iterative":
+            search_strategy = DefaultIterativeStrategy()
+        else:
+            search_strategy = DefaultWindowStrategy()
+    
     # Skip dataset loading in debug mode
     if args.skip_training and args.skip_perplexity:
-        print("Skipping dataset loading (debug mode)")
+        print("Skipping dataset processing (debug mode)")
         baseline_ppl = 0.0
         dataset_obj = None
     else:
-        print("Loading cached dataset...")
-        from datasets import load_from_disk
-        cached_dataset_path = os.path.join(os.path.dirname(__file__), '../../cached_dataset')
-        raw_dataset = load_from_disk(cached_dataset_path)
-        
         print("Calculating baseline perplexity...")
         if not args.skip_perplexity:
             baseline_ppl = calculate_perplexity(model, tokenizer, dataset=raw_dataset['validation'])
@@ -93,6 +203,7 @@ def main():
         "step": 0,
         "action": "baseline",
         "method": args.method,
+        "strategy": args.strategy,
         "layers_total": get_model_layers(model),
         "perplexity": baseline_ppl
     })
@@ -100,7 +211,6 @@ def main():
     # Run pruning method
     if args.method == "iterative":
         pruner = IterativePruner(model, tokenizer, run_dir)
-        search_strategy = DefaultIterativeStrategy()
         final_model = pruner.prune_and_heal(
             dataset=dataset_obj,
             trainer=trainer,
@@ -115,7 +225,6 @@ def main():
         method_suffix = "iter"
     else:  # window
         pruner = WindowPruner(model, tokenizer, run_dir)
-        search_strategy = DefaultWindowStrategy()
         final_model = pruner.prune_and_heal(
             dataset=dataset_obj,
             trainer=trainer,
@@ -131,30 +240,38 @@ def main():
     # Save final model
     model_name = os.path.basename(args.model_path.rstrip('/'))
     debug_suffix = "_debug" if args.skip_training else ""
+    strategy_suffix = f"_{args.strategy}" if args.strategy != "default" else ""
     
     # Define paths for base model and adapter
-    base_output_path = f"src/checkpoints/{model_name}_p_{method_suffix}_base{debug_suffix}"
-    adapter_output_path = f"src/checkpoints/{model_name}_p_{method_suffix}{debug_suffix}"
+    base_output_path = f"src/checkpoints/{model_name}_p_{method_suffix}_base{strategy_suffix}{debug_suffix}"
+    adapter_output_path = f"src/checkpoints/{model_name}_p_{method_suffix}{strategy_suffix}{debug_suffix}"
     os.makedirs("src/checkpoints", exist_ok=True)
     
     print(f"\nSaving models:")
     print(f"Base model: {base_output_path}")
     print(f"Adapter: {adapter_output_path}")
     
-    # Merge and save unified model
+    # Save models
     from peft import PeftModel
+    print(f"Final model type: {type(final_model)}")
+    print(f"Is PeftModel: {isinstance(final_model, PeftModel)}")
+    
     if isinstance(final_model, PeftModel):
-        print('Merging....')
+        print('Saving PEFT model...')
+        # Merge and save pruned model as base
         merged_model = final_model.merge_and_unload()
-    else:
-        merged_model = final_model
-    
-    merged_model.save_pretrained(base_output_path)
-    tokenizer.save_pretrained(base_output_path)
-    
-    # Save adapter separately
-    if isinstance(final_model, PeftModel):
+        merged_model.save_pretrained(base_output_path)
+        tokenizer.save_pretrained(base_output_path)
+        
+        # Save adapter separately
         final_model.save_pretrained(adapter_output_path, save_embedding_layers=False)
+        
+        print(f"Merged base model: {base_output_path}")
+        print(f"Adapter: {adapter_output_path}")
+    else:
+        print('Model is not PEFT, saving directly...')
+        final_model.save_pretrained(base_output_path)
+        tokenizer.save_pretrained(base_output_path)
         
     if args.skip_training:
         print(f"\n[DEBUG] Base model saved: {base_output_path}")

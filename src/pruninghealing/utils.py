@@ -35,7 +35,7 @@ def calculate_perplexity(
     model,
     tokenizer,
     dataset,
-    max_samples=5,
+    max_samples=None,
     max_length=512,
     normalized=True,
     device=None,

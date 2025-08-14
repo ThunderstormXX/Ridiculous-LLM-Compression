@@ -71,6 +71,12 @@ class IterativePruner:
 
             # Remove layer (safe: we remove from high indices to low, so lower indices stay stable)
             current_model = self._remove_layer(current_model, layer_to_remove)
+            
+            # Update existing adapter configs after layer removal
+            from peft import PeftModel
+            if isinstance(current_model, PeftModel):
+                self._update_adapter_configs_after_pruning(current_model, layer_to_remove)
+            
             num_layers_remaining = get_model_layers(current_model)
             print(f"Layers remaining: {num_layers_remaining}")
 
@@ -235,10 +241,48 @@ class IterativePruner:
         else:
             if not isinstance(model, PeftModel):
                 raise RuntimeError("Model is not PEFT-wrapped but lora_initialized=True")
+            
+            # This will be called after layer removal in the main loop
+            pass
+            
             model.add_adapter(f"lora_layer_{layer_idx}", lora_config)
             model.set_adapter(f"lora_layer_{layer_idx}")
 
         return model
+    def _update_adapter_configs_after_pruning(self, model, removed_layer_idx):
+        """Update target modules in existing adapters after layer removal"""
+        import re
+        from peft import PeftModel
+        
+        if not isinstance(model, PeftModel):
+            return
+            
+        for adapter_name in model.peft_config.keys():
+            config = model.peft_config[adapter_name]
+            if hasattr(config, 'target_modules'):
+                updated_modules = []
+                for module in config.target_modules:
+                    # Extract layer index from module name
+                    match = re.search(r'layers\.(\d+)\.', module)
+                    if match:
+                        old_idx = int(match.group(1))
+                        # Skip modules for removed layer
+                        if old_idx == removed_layer_idx:
+                            continue
+                        # Shift indices for layers after removed layer
+                        elif old_idx > removed_layer_idx:
+                            new_idx = old_idx - 1
+                            new_module = module.replace(f'layers.{old_idx}.', f'layers.{new_idx}.')
+                            updated_modules.append(new_module)
+                        else:
+                            # Keep modules for layers before removed layer unchanged
+                            updated_modules.append(module)
+                    else:
+                        updated_modules.append(module)
+                
+                config.target_modules = updated_modules
+                print(f"Updated adapter {adapter_name}: shifted indices after removing layer {removed_layer_idx}")
+    
     def _get_base_model(self, model):
         """Get base model from PEFT wrapper if needed"""
         from .utils import get_layers_base
@@ -338,12 +382,10 @@ class WindowPruner:
             "perplexity": ppl_after_prune
         })
         
-        # Apply LoRA to all remaining MLP layers (always)
+        # Apply LoRA to all remaining MLP layers (simple approach)
         target_modules = []
         for i in range(num_layers_remaining):
-            target_modules.extend([f"model.layers.{i}.mlp.gate_proj", 
-                                 f"model.layers.{i}.mlp.down_proj", 
-                                 f"model.layers.{i}.mlp.up_proj"])
+            target_modules.extend(self._get_target_modules(i))
         
         lora_config = LoraConfig(
             r=64,
@@ -397,13 +439,13 @@ class WindowPruner:
         # Simplified importance metric - could be enhanced
         return sum(window)  # Placeholder - prefer removing later layers
     
-    def _get_mlp_modules(self, layer_idx):
-        """Get MLP module names for specific layer"""
+    def _get_target_modules(self, layer_idx):
+        """Get target modules for LoRA based on model architecture"""
         model_type = self.model.config.model_type.lower()
         
         if "llama" in model_type or "mistral" in model_type:
             return [f"model.layers.{layer_idx}.mlp.gate_proj",
-                   f"model.layers.{layer_idx}.mlp.down_proj",
+                   f"model.layers.{layer_idx}.mlp.down_proj", 
                    f"model.layers.{layer_idx}.mlp.up_proj"]
         elif "phi" in model_type:
             return [f"model.layers.{layer_idx}.mlp.fc1",
@@ -413,9 +455,9 @@ class WindowPruner:
                    f"model.layers.{layer_idx}.mlp.w2",
                    f"model.layers.{layer_idx}.mlp.c_proj"]
         else:
-            return [f"model.layers.{layer_idx}.mlp.gate_proj",
-                   f"model.layers.{layer_idx}.mlp.down_proj",
-                   f"model.layers.{layer_idx}.mlp.up_proj"]
+            return ["gate_proj", "down_proj", "up_proj"]
+    
+
     
     def _get_base_model(self, model):
         """Get base model from PEFT wrapper if needed"""

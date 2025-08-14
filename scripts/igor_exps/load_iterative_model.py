@@ -4,9 +4,10 @@ import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 
-from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
 import torch
+import os
 
 def load_iterative_model(model_name="llama3.1-8b", device="auto"):
     """Load iterative pruned model with adapter"""
@@ -14,8 +15,14 @@ def load_iterative_model(model_name="llama3.1-8b", device="auto"):
     base_path = f"src/checkpoints/{model_name}_p_iter_base"
     adapter_path = f"src/checkpoints/{model_name}_p_iter"
     
-    print(f"Loading base model from: {base_path}")
-    print(f"Loading adapter from: {adapter_path}")
+    # Check if adapter exists
+    if os.path.exists(adapter_path):
+        print(f"Loading base model from: {base_path}")
+        print(f"Loading adapter from: {adapter_path}")
+        use_adapter = True
+    else:
+        print(f"Loading merged model from: {base_path}")
+        use_adapter = False
     
     # Handle device mapping
     if device.isdigit():
@@ -28,7 +35,7 @@ def load_iterative_model(model_name="llama3.1-8b", device="auto"):
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(base_path)
     
-    # Load base model
+    # Load model
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -38,12 +45,15 @@ def load_iterative_model(model_name="llama3.1-8b", device="auto"):
             device_map=device_map
         )
     
-    # Load model with adapter
-    model = PeftModel.from_pretrained(base_model, adapter_path)
+    if use_adapter:
+        model = PeftModel.from_pretrained(base_model, adapter_path)
+        print(f"Model with adapter loaded successfully!")
+    else:
+        model = base_model
+        print(f"Merged model loaded successfully!")
     
-    print(f"Model loaded successfully!")
     print(f"Model type: {type(model)}")
-    print(f"Base model layers: {len(base_model.model.layers) if hasattr(base_model.model, 'layers') else 'Unknown'}")
+    print(f"Model layers: {len(model.model.layers if hasattr(model, 'model') else model.model.layers) if hasattr(model.model if hasattr(model, 'model') else model, 'layers') else 'Unknown'}")
     
     return model, tokenizer
 
@@ -62,8 +72,8 @@ def main():
     if args.test_generation:
         print("\nTesting generation...")
         inputs = tokenizer("The capital of France is", return_tensors="pt")
-        if hasattr(model, 'device'):
-            inputs = {k: v.to(model.device) for k, v in inputs.items()}
+        device = next(model.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         
         with torch.no_grad():
             outputs = model.generate(**inputs, max_length=20, do_sample=False)
