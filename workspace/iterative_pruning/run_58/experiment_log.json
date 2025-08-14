@@ -1,0 +1,17 @@
+[
+  {
+    "step": 0,
+    "action": "baseline",
+    "method": "iterative",
+    "layers_total": 32,
+    "perplexity": 0.20516575151196703,
+    "timestamp": "2025-08-14T22:31:36.052089"
+  },
+  {
+    "action": "prune",
+    "step": 1,
+    "removed_layer": 24,
+    "lora_layer": 23,
+    "perplexity": 0.21117773691864836,
+    "layers_remaining": [
+      
