@@ -23,5 +23,13 @@
     "layers_remaining": 25,
     "perplexity": 0.33949155092529243,
     "timestamp": "2025-08-15T01:18:06.848474"
+  },
+  {
+    "step": 2,
+    "action": "train",
+    "perplexity": 0.2400029273458914,
+    "training_steps": 5000,
+    "total_steps_used": 5000,
+    "timestamp": "2025-08-15T04:23:55.429433"
   }
 ]

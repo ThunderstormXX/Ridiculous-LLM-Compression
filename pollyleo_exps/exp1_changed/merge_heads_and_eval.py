@@ -21,14 +21,20 @@ Merge attention heads and evaluate perplexity impact with minimal memory usage.
 import argparse
 import json
 import math
+import os
+import sys
 from pathlib import Path
 import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from datasets import load_dataset
+from datasets import load_from_disk
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
+from src.pruninghealing.utils import calculate_perplexity
 
 CHECKPOINTS_DIR = Path("../../src/checkpoints")
 LOGS_DIR = Path("logs")
+CACHED_DATASET_PATH = Path("../../cached_dataset")
 
 def load_saved_model(model_key):
     model_path = CHECKPOINTS_DIR / model_key
@@ -43,60 +49,14 @@ def load_saved_model(model_key):
         model_path,
         torch_dtype=torch.float16,
         device_map="auto",
-        trust_remote_code=True
+        trust_remote_code=True,
+        attn_implementation="eager"
     )
     return model, tokenizer
 
-def calculate_perplexity(model, tokenizer, dataset=None, dataset_name="allenai/c4", dataset_config="en", max_samples=100):
-    model.eval()
-    device = next(model.parameters()).device
-    
-    if dataset is None:
-        if dataset_name == "allenai/c4":
-            eval_dataset = load_dataset(dataset_name, dataset_config, split="validation", streaming=True)
-            eval_samples = []
-            for i, sample in enumerate(eval_dataset):
-                if len(eval_samples) >= max_samples:
-                    break
-                eval_samples.append(sample)
-            from datasets import Dataset
-            eval_dataset = Dataset.from_list(eval_samples)
-        else:
-            eval_dataset = load_dataset(dataset_name, dataset_config, split="validation")
-            eval_dataset = eval_dataset.select(range(min(max_samples, len(eval_dataset))))
-    else:
-        eval_dataset = dataset.select(range(min(max_samples, len(dataset))))
-    
-    total_loss = 0
-    total_tokens = 0
-    
-    with torch.no_grad():
-        for example in eval_dataset:
-            text = example.get("text", None)
-            if text is None or not text.strip():
-                continue
-            inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=256)
-            inputs = {k: v.to(device) for k, v in inputs.items()}
-            inputs["labels"] = inputs["input_ids"].clone()
-            outputs = model(**inputs)
-            loss = outputs.loss
-            total_loss += loss.item() * inputs["input_ids"].size(1)
-            total_tokens += inputs["input_ids"].size(1)
-            # Освобождение памяти после каждой итерации
-            del inputs, outputs
-            torch.cuda.empty_cache()
-    
-    if total_tokens == 0:
-        return float('inf')
-    
-    avg_loss = total_loss / total_tokens
-    perplexity = torch.exp(torch.tensor(avg_loss)).item()
-    
-    vocab_size = model.config.vocab_size
-    norm_perplexity = perplexity / math.log(vocab_size)
-    
-    model.train()
-    return norm_perplexity
+def load_cached_dataset():
+    """Load cached dataset"""
+    return load_from_disk(CACHED_DATASET_PATH)
 
 def get_model_layers(model):
     if hasattr(model, 'model') and hasattr(model.model, 'layers'):
@@ -133,14 +93,29 @@ def find_head_pairs(similarity_matrix):
 def clone_layer_weights(layer):
     """Клонируем только веса self_attn q,k,v,o_proj"""
     from copy import deepcopy
-    layer_clone = deepcopy(layer)  # мелкое копирование слоя, не всей модели
-    # Однако deepcopy слоя может быть дорого, можно вместо этого склонировать только веса:
-    for proj_name in ['q_proj', 'k_proj', 'v_proj', 'o_proj']:
-        orig_proj = getattr(layer, f"self_attn").__getattribute__(proj_name)
+    layer_clone = deepcopy(layer)
+    
+    # Check available attributes in self_attn
+    attn = layer.self_attn
+    proj_names = []
+    for name in ['q_proj', 'k_proj', 'v_proj', 'o_proj']:
+        if hasattr(attn, name):
+            proj_names.append(name)
+    
+    # If standard names don't exist, try alternative names
+    if not proj_names:
+        alt_names = ['query', 'key', 'value', 'dense']
+        for name in alt_names:
+            if hasattr(attn, name):
+                proj_names.append(name)
+    
+    for proj_name in proj_names:
+        orig_proj = getattr(attn, proj_name)
         new_proj = getattr(layer_clone.self_attn, proj_name)
         new_proj.weight.data = orig_proj.weight.data.clone()
-        if orig_proj.bias is not None:
+        if hasattr(orig_proj, 'bias') and orig_proj.bias is not None:
             new_proj.bias.data = orig_proj.bias.data.clone()
+    
     return layer_clone
 
 def main():
@@ -164,22 +139,34 @@ def main():
     target_layer = layers[args.layer]
     num_heads = model.config.num_attention_heads
     
+    # Load cached dataset
+    print("Loading cached dataset...")
+    cached_dataset = load_cached_dataset()
+    eval_dataset = cached_dataset['validation']
+    
     print("Calculating baseline perplexity...")
-    baseline_perplexity = calculate_perplexity(model, tokenizer, max_samples=args.max_samples)
+    baseline_perplexity = calculate_perplexity(model, tokenizer, eval_dataset, max_samples=args.max_samples, normalized=True)
     print(f"Baseline normalized perplexity: {baseline_perplexity:.4f}")
     
     # --- Мердж похожих голов ---
     print("Testing similar heads merging...")
-    # Создаем копию слоя, чтобы не менять оригинал
     layer_similar = clone_layer_weights(target_layer)
-    for proj in ['q_proj', 'k_proj', 'v_proj', 'o_proj']:
-        merge_heads(getattr(layer_similar.self_attn, proj), similar_pair[0], similar_pair[1], num_heads)
+    
+    # Find available projection layers
+    attn = layer_similar.self_attn
+    proj_names = []
+    for name in ['q_proj', 'k_proj', 'v_proj', 'o_proj']:
+        if hasattr(attn, name):
+            proj_names.append(name)
+    
+    for proj in proj_names:
+        merge_heads(getattr(attn, proj), similar_pair[0], similar_pair[1], num_heads)
     
     # Вставляем изменённый слой в модель (временно)
     with torch.no_grad():
         orig_layer = layers[args.layer]
         layers[args.layer] = layer_similar
-        similar_perplexity = calculate_perplexity(model, tokenizer, max_samples=args.max_samples)
+        similar_perplexity = calculate_perplexity(model, tokenizer, eval_dataset, max_samples=args.max_samples, normalized=True)
         layers[args.layer] = orig_layer
     
     torch.cuda.empty_cache()
@@ -188,13 +175,15 @@ def main():
     # --- Мердж разных голов ---
     print("Testing dissimilar heads merging...")
     layer_dissimilar = clone_layer_weights(target_layer)
-    for proj in ['q_proj', 'k_proj', 'v_proj', 'o_proj']:
-        merge_heads(getattr(layer_dissimilar.self_attn, proj), dissimilar_pair[0], dissimilar_pair[1], num_heads)
+    
+    attn_dissimilar = layer_dissimilar.self_attn
+    for proj in proj_names:  # Use same proj_names from above
+        merge_heads(getattr(attn_dissimilar, proj), dissimilar_pair[0], dissimilar_pair[1], num_heads)
     
     with torch.no_grad():
         orig_layer = layers[args.layer]
         layers[args.layer] = layer_dissimilar
-        dissimilar_perplexity = calculate_perplexity(model, tokenizer, max_samples=args.max_samples)
+        dissimilar_perplexity = calculate_perplexity(model, tokenizer, eval_dataset, max_samples=args.max_samples, normalized=True)
         layers[args.layer] = orig_layer
     
     torch.cuda.empty_cache()
@@ -202,8 +191,8 @@ def main():
     
     results = {
         "layer": args.layer,
-        "similar_heads": similar_pair,
-        "dissimilar_heads": dissimilar_pair,
+        "similar_heads": [int(similar_pair[0]), int(similar_pair[1])],
+        "dissimilar_heads": [int(dissimilar_pair[0]), int(dissimilar_pair[1])],
         "max_similarity": float(max_sim),
         "min_similarity": float(min_sim),
         "before": float(baseline_perplexity),

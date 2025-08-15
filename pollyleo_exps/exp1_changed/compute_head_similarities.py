@@ -43,7 +43,8 @@ def load_saved_model(model_key):
         model_path,
         torch_dtype=torch.float16,
         device_map="auto",
-        trust_remote_code=True
+        trust_remote_code=True,
+        attn_implementation="eager"
     )
     return model, tokenizer
 
